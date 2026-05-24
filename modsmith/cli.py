@@ -120,11 +120,10 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── build ─────────────────────────────────────────────────────────────────
     build_p = sub.add_parser(
         "build",
-        help="[Phase 6] Build target branches with Gradle and collect JARs",
+        help="Build target branches with Gradle and collect JARs",
         description=(
-            "Checks out each target branch in turn, runs ./gradlew build, "
-            "and copies finished JARs into WORKSPACE/DIST/.  "
-            "NOT YET IMPLEMENTED."
+            "Checks out each target branch in turn, runs gradlew clean build, "
+            "and copies finished release JARs into WORKSPACE/DIST/."
         ),
     )
     build_p.add_argument(
@@ -253,8 +252,44 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    """Handle ``modsmith build`` (Phase 6 stub)."""
-    print("[modsmith] build is not yet implemented (Phase 6).")
+    """Handle ``modsmith build``.
+
+    Checks out each target branch, runs Gradle, and collects release JARs
+    into ``WORKSPACE/DIST/``.
+    """
+    workspace_dir, _templates_dir, mods_dir = _resolve_dirs(args)
+    from modsmith.builder import build, BuildError
+
+    try:
+        res = build(
+            workspace_dir=workspace_dir,
+            mods_dir=mods_dir,
+            branch=args.branch,
+            dry_run=args.dry_run,
+        )
+    except BuildError as exc:
+        print(f"Build error: {exc}", file=sys.stderr)
+        return 1
+
+    # Print warnings
+    for w in res.warnings:
+        print(f"  [WARN]  {w}")
+
+    if res.dry_run:
+        print(f"Dry run — repo: {res.repo_dir}")
+        print("Planned branches (gradlew clean build):")
+        for b in res.built_branches:
+            print(f"  - {b}")
+    else:
+        print(f"Build complete — repo: {res.repo_dir}")
+        print("Built branches:")
+        for b in res.built_branches:
+            print(f"  - {b}")
+        if res.copied_jars:
+            print("\nJARs copied to WORKSPACE/DIST/:")
+            for j in res.copied_jars:
+                print(f"  - {j.name}")
+
     return 0
 
 
