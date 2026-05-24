@@ -13,7 +13,6 @@
       - Python 3.10+ on PATH
       - PyInstaller installed: pip install pyinstaller
       - NSIS 3.x on PATH (makensis.exe)
-      - EnvVarUpdate.nsh plugin installed in NSIS
 #>
 
 Set-StrictMode -Version Latest
