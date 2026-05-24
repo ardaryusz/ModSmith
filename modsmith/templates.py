@@ -76,14 +76,22 @@ def write_java_entrypoint(repo_root: Path, ctx: TargetContext) -> list[str]:
         warnings.append("Could not find or create Java source root.")
         return warnings
 
-    # Delete obvious template example Java source folders
-    for folder in ["com/example", "example", "examplemod"]:
-        target_dir = java_root / folder
-        if target_dir.exists() and target_dir.is_dir():
+    # Delete ALL pre-existing .java files so no template example classes survive
+    # (e.g. ExampleMod.java, Config.java from Forge templates).
+    if java_root.exists():
+        for java_file in list(java_root.rglob("*.java")):
             try:
-                shutil.rmtree(target_dir)
+                java_file.unlink()
             except Exception:
                 pass
+        # Prune any directories that became empty after the deletion
+        # (bottom-up so inner dirs are removed before outer dirs)
+        for empty_dir in sorted(java_root.rglob("*"), reverse=True):
+            if empty_dir.is_dir():
+                try:
+                    empty_dir.rmdir()  # only succeeds when the directory is truly empty
+                except OSError:
+                    pass  # not empty — leave it
 
     package = ctx.mod_ctx.package
     main_class = ctx.mod_ctx.main_class

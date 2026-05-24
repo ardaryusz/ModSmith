@@ -113,9 +113,35 @@ class TestGenerator(unittest.TestCase):
             if t["minecraft_version"] == "1.20.1":
                 desc_data["recipe_folder"] = "recipes"
                 desc_data["recipe_format"] = "legacy_1_20"
+            else:
+                desc_data["recipe_folder"] = "recipe"
+                desc_data["recipe_format"] = "modern_1_21"
             (tdir / "modsmith-template.json").write_text(
                 json.dumps(desc_data), encoding="utf-8"
             )
+            # Gradle wrapper stubs (required by verifier check 5)
+            (tdir / "gradlew.bat").write_text("@echo off\n", encoding="utf-8")
+            (tdir / "gradlew").write_text("#!/bin/sh\n", encoding="utf-8")
+            wrapper_dir = tdir / "gradle" / "wrapper"
+            wrapper_dir.mkdir(parents=True, exist_ok=True)
+            (wrapper_dir / "gradle-wrapper.jar").write_bytes(b"PK fake jar")
+            (wrapper_dir / "gradle-wrapper.properties").write_text("", encoding="utf-8")
+            # Loader metadata stubs (required by verifier check 4)
+            loader = t["loader"].lower()
+            if loader == "forge":
+                meta_dir = tdir / "src" / "main" / "resources" / "META-INF"
+                meta_dir.mkdir(parents=True, exist_ok=True)
+                (meta_dir / "mods.toml").write_text(
+                    'modLoader="javafml"\nlicense="MIT"\n[[mods]]\n    modId="placeholder"\n',
+                    encoding="utf-8",
+                )
+            elif loader == "fabric":
+                res_dir = tdir / "src" / "main" / "resources"
+                res_dir.mkdir(parents=True, exist_ok=True)
+                (res_dir / "fabric.mod.json").write_text(
+                    '{"schemaVersion":1,"id":"placeholder","version":"1.0.0"}',
+                    encoding="utf-8",
+                )
 
     def tearDown(self):
         self.temp_dir.cleanup()

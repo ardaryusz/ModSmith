@@ -24,6 +24,7 @@ from modsmith.validator import validate_workspace
 from modsmith.templates import copy_template, write_java_entrypoint
 from modsmith.recipes import load_recipes, write_recipes, RecipeFormat
 from modsmith.patchers import get_patcher
+from modsmith.verifier import verify_generated_project
 from modsmith.git_ops import (
     git_init,
     git_create_orphan_branch,
@@ -43,6 +44,10 @@ class GenerateResult:
     generated_branches: list[str]
     warnings: list[str]
     dry_run: bool = False
+
+
+class GenerateError(Exception):
+    """Raised when generation fails due to verifier errors on a target branch."""
 
 
 def is_legacy_recipe_version(version: str) -> bool:
@@ -272,6 +277,16 @@ def generate(
             )
         except Exception as exc:
             raise ValueError(f"Failed to write converted recipes for '{tc.branch}': {exc}")
+
+        # Verify the fully-assembled project before committing
+        vr = verify_generated_project(output_repo_dir, tc)
+        warnings.extend(vr.warnings)
+        if not vr.ok:
+            err_detail = "\n".join(f"  - {e}" for e in vr.errors)
+            raise GenerateError(
+                f"Post-generation verification failed for branch '{tc.branch}':\n"
+                + err_detail
+            )
 
         # Stage and commit
         try:
