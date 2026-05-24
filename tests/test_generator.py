@@ -170,6 +170,27 @@ class TestGenerator(unittest.TestCase):
         self.assertFalse((output_repo / "old.txt").exists())
         self.assertEqual(res.generated_branches, ["forge-1.20.1", "fabric-1.21"])
 
+    def test_force_uses_safe_delete_tree(self):
+        """generate --force must call safe_delete_tree, not bare shutil.rmtree.
+
+        This ensures read-only files (e.g. .git/objects) are handled correctly
+        on Windows instead of raising [WinError 5] Access is denied.
+        """
+        output_repo = self.mods / "TestModRepo"
+        output_repo.mkdir(parents=True, exist_ok=True)
+
+        # Patch safe_delete_tree to verify it is called
+        with patch("modsmith.generator.safe_delete_tree") as mock_sdt:
+            with patch("shutil.which", return_value="/usr/bin/mock"):
+                try:
+                    # Generation will fail after deletion because git isn't mocked,
+                    # but we only care that safe_delete_tree was called.
+                    generate(self.workspace, self.templates, self.mods, force=True)
+                except Exception:
+                    pass
+
+        mock_sdt.assert_called_once_with(output_repo)
+
     def test_target_branch_filtering(self):
         if shutil.which("git") is None:
             self.skipTest("git is required for the full generate run")

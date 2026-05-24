@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import shutil
+import stat
 import subprocess
 from pathlib import Path
 
@@ -129,3 +131,65 @@ def run_subprocess(
         capture_output=True,
         text=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Safe directory deletion
+# ---------------------------------------------------------------------------
+
+
+def safe_delete_tree(path: Path) -> None:
+    """Recursively delete *path*, handling read-only files on Windows.
+
+    Git repositories (and Gradle caches) can contain read-only files inside
+    ``.git/objects/``.  On Windows, ``shutil.rmtree`` raises ``[WinError 5]
+    Access is denied`` when it encounters them.  This helper:
+
+    1. Makes every file under *path* writable before attempting deletion.
+    2. Supplies an ``onerror`` / ``onexc`` handler that clears the read-only
+       attribute and retries whenever rmtree stumbles.
+    3. Raises :class:`OSError` with a clear, actionable message if deletion
+       still fails after the retry.
+
+    Does nothing if *path* does not exist.
+    """
+    path = Path(path)
+    if not path.exists():
+        return
+
+    def _make_writable(p: Path) -> None:
+        """Best-effort: remove read-only flag from *p*."""
+        try:
+            p.chmod(p.stat().st_mode | stat.S_IWRITE | stat.S_IWGRP | stat.S_IWOTH)
+        except Exception:
+            pass
+
+    # Pre-pass: make everything writable so the primary rmtree usually succeeds.
+    for item in path.rglob("*"):
+        _make_writable(item)
+    _make_writable(path)
+
+    # onerror/onexc handler for shutil.rmtree
+    def _on_error(func, failed_path, exc_info):
+        """Chmod the failed path and retry once."""
+        _make_writable(Path(failed_path))
+        try:
+            func(failed_path)
+        except Exception:
+            pass  # give rmtree a chance to continue; we check existence at the end
+
+    import sys
+    if sys.version_info >= (3, 12):
+        # Python 3.12+ uses onexc instead of onerror
+        shutil.rmtree(path, onexc=_on_error)
+    else:
+        shutil.rmtree(path, onerror=_on_error)
+
+    if path.exists():
+        raise OSError(
+            f"Could not fully delete '{path}'.\n"
+            "On Windows, file handles may still be open.  Try:\n"
+            "  1. Close any IDEs or Explorer windows viewing that folder.\n"
+            "  2. Stop Gradle daemons:  cd MODS\\<repo> && gradlew.bat --stop\n"
+            "  3. Delete the folder manually, then re-run generate."
+        )

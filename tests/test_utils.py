@@ -7,12 +7,17 @@ Covers:
 - to_class_name
 """
 
+import stat
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from modsmith.utils import (
     is_valid_mod_id,
     is_valid_java_identifier,
     is_valid_java_package,
+    safe_delete_tree,
     to_class_name,
 )
 
@@ -208,6 +213,71 @@ class TestToClassName(unittest.TestCase):
     def test_real_mod_name(self):
         result = to_class_name("Easy Peasy Gunpowder")
         self.assertEqual(result, "EasyPeasyGunpowder")
+
+
+class TestSafeDeleteTree(unittest.TestCase):
+    """Tests for safe_delete_tree."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_deletes_normal_directory(self):
+        target = self.root / "normal_dir"
+        target.mkdir()
+        (target / "file.txt").write_text("hello", encoding="utf-8")
+        (target / "subdir").mkdir()
+        (target / "subdir" / "nested.txt").write_text("world", encoding="utf-8")
+
+        safe_delete_tree(target)
+
+        self.assertFalse(target.exists())
+
+    def test_deletes_directory_with_readonly_files(self):
+        """Mirrors the Windows [WinError 5] scenario: .git/objects are read-only."""
+        target = self.root / "repo_with_readonly"
+        git_obj_dir = target / ".git" / "objects" / "ab"
+        git_obj_dir.mkdir(parents=True)
+        readonly_file = git_obj_dir / "cd1234ef"
+        readonly_file.write_bytes(b"packed object content")
+
+        # Make the file read-only (simulates Git object files on Windows)
+        readonly_file.chmod(stat.S_IREAD | stat.S_IRGRP | stat.S_IROTH)
+
+        safe_delete_tree(target)
+
+        self.assertFalse(target.exists())
+
+    def test_does_nothing_when_path_missing(self):
+        missing = self.root / "does_not_exist"
+        # Must not raise
+        safe_delete_tree(missing)
+
+    def test_raises_clear_error_when_deletion_still_fails(self):
+        """If rmtree leaves the path intact, safe_delete_tree raises OSError
+        with an actionable message."""
+        target = self.root / "stubborn_dir"
+        target.mkdir()
+        (target / "x.txt").write_text("x", encoding="utf-8")
+
+        import sys
+        if sys.version_info >= (3, 12):
+            rmtree_kwarg = "onexc"
+        else:
+            rmtree_kwarg = "onerror"
+
+        # Patch shutil.rmtree so it does nothing (simulating a locked handle)
+        with patch("modsmith.utils.shutil.rmtree"):
+            with self.assertRaises(OSError) as ctx:
+                safe_delete_tree(target)
+
+        msg = str(ctx.exception)
+        # Message should guide the user
+        self.assertIn("Could not fully delete", msg)
+        self.assertIn("Gradle daemons", msg)
 
 
 if __name__ == "__main__":

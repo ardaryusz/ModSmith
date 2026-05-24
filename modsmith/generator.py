@@ -13,6 +13,7 @@ Phase 5:
 from __future__ import annotations
 
 import shutil
+from modsmith.utils import safe_delete_tree
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -160,11 +161,12 @@ def generate(
     if output_repo_dir.exists():
         if force:
             try:
-                shutil.rmtree(output_repo_dir)
-            except Exception as exc:
+                safe_delete_tree(output_repo_dir)
+            except OSError as exc:
                 raise ValueError(f"Failed to delete existing output repo: {exc}")
         else:
             raise ValueError(f"Output repo already exists: {output_repo_dir}")
+
 
     output_repo_dir.mkdir(parents=True, exist_ok=True)
 
