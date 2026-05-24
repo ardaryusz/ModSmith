@@ -294,8 +294,28 @@ def cmd_build(args: argparse.Namespace) -> int:
 
 
 def cmd_clean(args: argparse.Namespace) -> int:
-    """Handle ``modsmith clean`` (Phase 7 stub)."""
-    print("[modsmith] clean is not yet implemented (Phase 7).")
+    """Handle ``modsmith clean``.
+
+    Deletes the generated repository MODS/<output_repo_name>.
+    """
+    workspace_dir, _templates_dir, mods_dir = _resolve_dirs(args)
+    from modsmith.cleaner import clean, CleanError
+
+    try:
+        res = clean(
+            workspace_dir=workspace_dir,
+            mods_dir=mods_dir,
+            force=args.force,
+            dry_run=args.dry_run,
+        )
+    except CleanError as exc:
+        print(f"Clean error: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    print(res.message)
     return 0
 
 
