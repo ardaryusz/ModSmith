@@ -32,6 +32,31 @@ try {
     Write-Host "Project root: $ProjectRoot"
     Write-Host ""
 
+    # --- Step 0: Get version and architecture details ---
+    $Arch = "x64"
+    Write-Host "Detecting ModSmith version..." -ForegroundColor Yellow
+    $Version = ""
+    try {
+        $Version = & py -c "import modsmith; print(modsmith.__version__)"
+        $Version = $Version.Trim()
+    } catch {
+        try {
+            $Version = & python -c "import modsmith; print(modsmith.__version__)"
+            $Version = $Version.Trim()
+        } catch {
+            # Catch block to prevent script crash
+        }
+    }
+
+    if ([string]::IsNullOrEmpty($Version)) {
+        Write-Warning "Could not read version dynamically. Falling back to '1.0.0'."
+        $Version = "1.0.0"
+    }
+    Write-Host "Detected version: $Version" -ForegroundColor Green
+    Write-Host "Architecture: $Arch" -ForegroundColor Green
+    Write-Host ""
+
+
     # --- Step 1: Build the executable ---
     Write-Host "[1/3] Building executable..." -ForegroundColor Yellow
     $buildExeScript = Join-Path $ProjectRoot "scripts\build_exe.ps1"
@@ -52,11 +77,18 @@ try {
         exit 1
     }
 
-    # --- Step 2: Ensure output directory exists ---
+    # --- Step 2: Ensure output directory exists and clean stale setup exe ---
     $installerOutDir = Join-Path $ProjectRoot "dist\installer"
     if (-not (Test-Path $installerOutDir)) {
         New-Item -ItemType Directory -Path $installerOutDir -Force | Out-Null
+    } else {
+        $genericInstallerPath = Join-Path $installerOutDir "ModSmithSetup.exe"
+        if (Test-Path $genericInstallerPath) {
+            Write-Host "Removing stale generic installer: $genericInstallerPath"
+            Remove-Item -Force $genericInstallerPath
+        }
     }
+
 
     # --- Step 3: Run NSIS ---
     Write-Host ""
@@ -83,20 +115,49 @@ Install NSIS from https://nsis.sourceforge.io/Download and add it to PATH.
         exit 1
     }
 
-    # --- Step 4: Verify installer output ---
+    # --- Step 4: Verify and rename installer output ---
     Write-Host ""
-    Write-Host "[3/3] Verifying installer..." -ForegroundColor Yellow
-    $installerPath = Join-Path $ProjectRoot "dist\installer\ModSmithSetup.exe"
-    if (-not (Test-Path $installerPath)) {
-        Write-Error "Installer not found at: $installerPath"
+    Write-Host "[3/3] Verifying and renaming installer..." -ForegroundColor Yellow
+    $genericInstallerPath = Join-Path $ProjectRoot "dist\installer\ModSmithSetup.exe"
+    if (-not (Test-Path $genericInstallerPath)) {
+        Write-Error "Expected generic installer not found at: $genericInstallerPath"
         exit 1
     }
-    $size = (Get-Item $installerPath).Length
-    Write-Host "  Found: $installerPath ($([math]::Round($size / 1MB, 2)) MB)"
+
+    # Final named installer path
+    $finalInstallerName = "modsmith_${Version}_${Arch}-setup.exe"
+    $finalInstallerPath = Join-Path $ProjectRoot "dist\installer\$finalInstallerName"
+
+    # Remove existing named installer if it exists
+    if (Test-Path $finalInstallerPath) {
+        Write-Host "Removing existing named installer: $finalInstallerPath"
+        Remove-Item -Force $finalInstallerPath
+    }
+
+    # Move/rename the installer
+    Write-Host "Renaming generic installer to $finalInstallerName"
+    Move-Item -Path $genericInstallerPath -Destination $finalInstallerPath
+
+    # Verify both states to prevent accidental dual-uploads or missing files
+    $finalExists = Test-Path $finalInstallerPath
+    $genericExists = Test-Path $genericInstallerPath
+
+    if (-not $finalExists) {
+        Write-Error "Verification failed: Final named installer does not exist at: $finalInstallerPath"
+        exit 1
+    }
+
+    if ($genericExists) {
+        Write-Error "Verification failed: Generic installer still exists at: $genericInstallerPath"
+        exit 1
+    }
+
+    $size = (Get-Item $finalInstallerPath).Length
+    Write-Host "  Found final installer: $finalInstallerPath ($([math]::Round($size / 1MB, 2)) MB)"
 
     Write-Host ""
     Write-Host "=== Installer build successful! ===" -ForegroundColor Green
-    Write-Host "Installer: $installerPath"
+    Write-Host "Installer: $finalInstallerPath"
 }
 finally {
     Pop-Location

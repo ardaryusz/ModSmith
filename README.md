@@ -18,7 +18,11 @@
 ## Quick Start
 
 ### 1. Install ModSmith
-* **Windows Installer:** Download and run `ModSmithSetup.exe` (automatically sets up folder structure and environment paths).
+* **Windows Installer (Recommended):** Download and run `modsmith_<version>_<arch>-setup.exe` (e.g., `modsmith_1.0.0_x64-setup.exe`), which automatically configures your workspace folder structure and environment paths.
+* **PowerShell One-liner (Latest Release):** Run the following command in an elevated PowerShell session:
+  ```powershell
+  $repo="ardaryusz/ModSmith"; $rel=irm "https://api.github.com/repos/$repo/releases/latest" -Headers @{ "User-Agent"="modsmith-installer" }; $asset=$rel.assets | ? { $_.name -match 'x64-setup\.exe$' } | select -First 1; if(-not $asset){ throw "No x64-setup.exe asset found in latest release." }; $tmp=Join-Path $env:TEMP $asset.name; iwr $asset.browser_download_url -OutFile $tmp; Start-Process $tmp -Verb RunAs -Wait
+  ```
 * **From Source:** Clone the repository and run:
   ```bash
   pip install -e ".[dev]"

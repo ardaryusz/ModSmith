@@ -4,7 +4,7 @@ This page covers the design and packaging of the ModSmith Windows Installer.
 
 ## Overview
 
-ModSmith provides a native Windows installation setup wizard (`ModSmithSetup.exe`) using a combination of two tools:
+ModSmith provides a native Windows installation setup wizard formatted as `modsmith_<version>_<arch>-setup.exe` (e.g., `modsmith_1.0.0_x64-setup.exe`) using a combination of two tools:
 
 * **PyInstaller:** Packages the Python source code and runtime environment into a standalone, dependency-free `modsmith.exe` inside `dist/ModSmith/`.
 * **NSIS (Nullsoft Scriptable Install System):** Compiles the executable and support files into a single, self-extracting installer setup executable.
@@ -37,7 +37,7 @@ The installer script (`installer/ModSmithInstaller.nsi`) is designed to provide 
 
 After compiling a new version of the installer, perform the following steps to verify its behavior:
 
-1. [ ] Double-click `ModSmithSetup.exe` to run the installation wizard.
+1. [ ] Double-click `modsmith_<version>_<arch>-setup.exe` (e.g., `modsmith_1.0.0_x64-setup.exe`) to run the installation wizard.
 2. [ ] Choose a custom path or keep the default `C:\Program Files\ModSmith` and click Next.
 3. [ ] Keep all components checked (Core, PATH, Start Menu) and click Install.
 4. [ ] Verify that the folder `%USERPROFILE%\Documents\ModSmith` exists and contains sample JSON files.
