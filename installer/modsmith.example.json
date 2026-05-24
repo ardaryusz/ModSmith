@@ -1,0 +1,29 @@
+{
+  "mod_id": "mymod",
+  "mod_name": "My Mod",
+  "mod_version": "1.0.0",
+  "group": "com.example.mymod",
+  "package": "com.example.mymod",
+  "authors": "YourName",
+  "license": "MIT",
+  "description": "A short description of your mod.",
+  "output_repo_name": "MyMod",
+
+  "targets": [
+    {
+      "loader": "forge",
+      "template": "forge-1.20.1",
+      "branch": "forge-1.20.1",
+      "mc_range": "1.20.1",
+      "minecraft_version": "1.20.1",
+      "minecraft_version_range": "[1.20.1,1.20.2)"
+    },
+    {
+      "loader": "fabric",
+      "template": "fabric-1.21.2-1.21.11",
+      "branch": "fabric-1.21.2-1.21.11",
+      "mc_range": "1.21.2-1.21.11",
+      "minecraft_version": "1.21.2"
+    }
+  ]
+}

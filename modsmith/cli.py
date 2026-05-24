@@ -7,10 +7,10 @@ Entry points
 
 Sub-commands
 ------------
-- ``validate``  — check workspace, config, and templates (Phase 2)
-- ``generate``  — build orphan-branch Git repo (Phase 5)
-- ``build``     — Gradle build + JAR collection (Phase 6, stub)
-- ``clean``     — delete generated repo (Phase 7, stub)
+- ``validate``  — check workspace, config, and templates
+- ``generate``  — build orphan-branch Git repo
+- ``build``     — Gradle build + JAR collection
+- ``clean``     — delete generated repo
 
 Global flags
 ------------
@@ -18,16 +18,42 @@ Global flags
 - ``--templates DIR``  override templates root  (default: ``MODTEMPLATES``)
 - ``--mods DIR``       override mods root       (default: ``MODS``)
 - ``--dry-run``        print planned actions without writing files or running Git
+
+Environment variables
+---------------------
+- ``MODSMITH_HOME``  If set, defaults for ``--workspace``, ``--templates``,
+  and ``--mods`` resolve as sub-directories of this path instead of the
+  current working directory.  Explicit CLI flags always take precedence.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 from modsmith import __version__
 from modsmith.validator import validate_workspace
+
+
+# ---------------------------------------------------------------------------
+# MODSMITH_HOME default-path helper
+# ---------------------------------------------------------------------------
+
+
+def _get_default_dir(subdir: str) -> str:
+    """Return the default path for *subdir* respecting ``MODSMITH_HOME``.
+
+    If the ``MODSMITH_HOME`` environment variable is set, returns
+    ``$MODSMITH_HOME/<subdir>`` as a string.  Otherwise returns the bare
+    *subdir* name (relative to the current working directory), preserving
+    backwards-compatible behaviour.
+    """
+    home = os.environ.get("MODSMITH_HOME")
+    if home:
+        return str(Path(home) / subdir)
+    return subdir
 
 
 # ---------------------------------------------------------------------------
@@ -52,19 +78,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--workspace",
-        default="WORKSPACE",
+        default=_get_default_dir("WORKSPACE"),
         metavar="DIR",
         help="Path to the workspace directory (default: %(default)s)",
     )
     parser.add_argument(
         "--templates",
-        default="MODTEMPLATES",
+        default=_get_default_dir("MODTEMPLATES"),
         metavar="DIR",
         help="Path to the mod templates directory (default: %(default)s)",
     )
     parser.add_argument(
         "--mods",
-        default="MODS",
+        default=_get_default_dir("MODS"),
         metavar="DIR",
         help="Path to the output mods directory (default: %(default)s)",
     )

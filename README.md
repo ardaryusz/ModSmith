@@ -194,6 +194,133 @@ _If this descriptor is missing, ModSmith will emit a warning during validation a
 
 ---
 
+## Installation
+
+### Windows Installer (recommended)
+
+Download `ModSmithSetup.exe` and run it. The installer will:
+
+1. Install `modsmith.exe` and runtime files to `C:\Program Files\ModSmith` (configurable).
+2. Create your workspace folder structure under `Documents\ModSmith`:
+   ```
+   Documents\ModSmith\
+   ├── MODTEMPLATES\           # Place unpacked mod templates here
+   ├── WORKSPACE\
+   │   ├── DETAILS\            # Put modsmith.json here
+   │   ├── RECIPES\            # Put recipe JSON files here
+   │   ├── README\             # Optional README for generated branches
+   │   └── DIST\               # Built JARs are copied here
+   └── MODS\                   # Generated Git repos appear here
+   ```
+3. Set the `MODSMITH_HOME` environment variable to `Documents\ModSmith`.
+4. Optionally add the install directory to your `PATH`.
+5. Create a **ModSmith Command Prompt** Start Menu shortcut that opens PowerShell in your workspace.
+
+After installation, open "ModSmith Command Prompt" from the Start Menu and run:
+
+```sh
+modsmith --help
+```
+
+> [!IMPORTANT]
+> The installer does **not** bundle Forge, NeoForge, or Fabric MDK templates. You must download and unpack the appropriate mod development kits into `Documents\ModSmith\MODTEMPLATES\` yourself.
+
+### Uninstalling
+
+The uninstaller removes application files from Program Files and cleans up PATH and environment variables. It does **not** delete your `Documents\ModSmith` folder by default — your templates, recipes, generated mods, and built JARs are preserved.
+
+### From Source (pip)
+
+```sh
+pip install -e ".[dev]"
+python -m modsmith --help
+```
+
+---
+
+## MODSMITH_HOME
+
+ModSmith supports a `MODSMITH_HOME` environment variable that controls where the tool looks for its workspace, templates, and output directories by default.
+
+| `MODSMITH_HOME`   | `--workspace` default          | `--templates` default            | `--mods` default          |
+|-------------------|--------------------------------|----------------------------------|---------------------------|
+| _(not set)_       | `./WORKSPACE`                  | `./MODTEMPLATES`                 | `./MODS`                  |
+| `C:\Users\You\Documents\ModSmith` | `C:\Users\You\Documents\ModSmith\WORKSPACE` | `C:\Users\You\Documents\ModSmith\MODTEMPLATES` | `C:\Users\You\Documents\ModSmith\MODS` |
+
+Explicit CLI flags (`--workspace`, `--templates`, `--mods`) always override the environment variable.
+
+The Windows installer sets `MODSMITH_HOME` automatically. If you install from source and want the same behaviour, set it yourself:
+
+```powershell
+[Environment]::SetEnvironmentVariable("MODSMITH_HOME", "$HOME\Documents\ModSmith", "User")
+```
+
+---
+
+## Requirements
+
+- **Python 3.10+** (not needed if using the Windows installer)
+- **Git** on `PATH`
+- **Java 17+** (only needed when building with Gradle, not for generation)
+
+---
+
+## Building from Source
+
+### Build the executable
+
+Prerequisites: Python 3.10+, PyInstaller (`pip install pyinstaller`)
+
+```powershell
+.\scripts\build_exe.ps1
+```
+
+This produces `dist\ModSmith\modsmith.exe`.
+
+### Build the installer
+
+Prerequisites: the above, plus [NSIS 3.x](https://nsis.sourceforge.io/Download) with the `EnvVarUpdate` plugin on `PATH`.
+
+```powershell
+.\scripts\build_installer.ps1
+```
+
+This produces `dist\installer\ModSmithSetup.exe`.
+
+---
+
+## Development
+
+```sh
+# Install in development mode
+pip install -e ".[dev]"
+
+# Run tests
+python -m pytest tests/ -v
+
+# Run a specific test file
+python -m pytest tests/test_config.py -v
+```
+
+---
+
+## Manual Verification Checklist
+
+After installing ModSmith via the Windows installer:
+
+1. ✅ Install ModSmith using `ModSmithSetup.exe`
+2. ✅ Open **ModSmith Command Prompt** from the Start Menu
+3. ✅ Run `modsmith --help` — verify usage is printed
+4. ✅ Confirm `Documents\ModSmith` folders exist (`MODTEMPLATES`, `WORKSPACE`, `MODS`)
+5. ✅ Place a template into `Documents\ModSmith\MODTEMPLATES\`
+6. ✅ Create `WORKSPACE\DETAILS\modsmith.json` (copy from `modsmith.example.json`)
+7. ✅ Run `modsmith validate`
+8. ✅ Run `modsmith generate`
+9. ✅ Run `modsmith build`
+10. ✅ Confirm JAR appears in `WORKSPACE\DIST\`
+
+---
+
 ## License
 
-GPLv3
+This project is licensed under the **GNU General Public License v3.0 (GPLv3)**.
