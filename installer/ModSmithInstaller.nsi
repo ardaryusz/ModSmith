@@ -15,6 +15,22 @@
 ; No external NSIS plugins required — uses only built-in includes.
 ; ==========================================================================
 
+; --------------------------------------------------------------------------
+; Icon — must be defined BEFORE !include "MUI2.nsh" so MUI2 picks it up
+; --------------------------------------------------------------------------
+; MODSMITH_ICON can be injected at compile-time via:
+;   makensis /DMODSMITH_ICON="C:\absolute\path\to\modsmith.ico" ...
+; If not provided, fall back to the relative path from the installer dir.
+!ifndef MODSMITH_ICON
+  !define MODSMITH_ICON "..\assets\modsmith.ico"
+!endif
+!echo "MODSMITH_ICON=${MODSMITH_ICON}"
+
+; MUI2 controls the wizard icon via MUI_ICON / MUI_UNICON.
+; These MUST come before !include "MUI2.nsh".
+!define MUI_ICON    "${MODSMITH_ICON}"
+!define MUI_UNICON  "${MODSMITH_ICON}"
+
 !include "MUI2.nsh"
 
 ; --------------------------------------------------------------------------
@@ -31,6 +47,9 @@
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
 OutFile "..\dist\installer\ModSmithSetup.exe"
+; Redundant with MUI_ICON but harmless — kept for non-MUI fallback
+Icon "${MODSMITH_ICON}"
+UninstallIcon "${MODSMITH_ICON}"
 InstallDir "$PROGRAMFILES64\${PRODUCT_NAME}"
 InstallDirRegKey HKCU "Software\${PRODUCT_NAME}" "InstallDir"
 RequestExecutionLevel admin
@@ -163,14 +182,14 @@ Section "Start Menu Shortcut" SEC_STARTMENU
     StrCpy $UserDataDir "$DOCUMENTS\${PRODUCT_NAME}"
     CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
 
-    ; PowerShell shortcut opening in the user data directory
+    ; PowerShell shortcut opening in the user data directory using the modsmith.exe icon
     CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\ModSmith Command Prompt.lnk" \
         "powershell.exe" \
         "-NoExit -Command $\"Set-Location '$UserDataDir'; Write-Host 'ModSmith Workspace: $UserDataDir' -ForegroundColor Cyan; Write-Host 'Run: modsmith --help' -ForegroundColor Yellow$\"" \
-        "" "" "" "" "Open PowerShell in ModSmith workspace"
+        "$INSTDIR\modsmith.exe" 0 "" "" "Open PowerShell in ModSmith workspace"
 
     CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall ModSmith.lnk" \
-        "$INSTDIR\Uninstall.exe"
+        "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
 SectionEnd
 
 

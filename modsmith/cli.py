@@ -161,10 +161,9 @@ def _build_parser() -> argparse.ArgumentParser:
     # ── clean ─────────────────────────────────────────────────────────────────
     clean_p = sub.add_parser(
         "clean",
-        help="[Phase 7] Delete the generated output repo",
+        help="Delete the generated output repo",
         description=(
             "Deletes MODS/<output_repo_name> after a confirmation prompt.  "
-            "NOT YET IMPLEMENTED."
         ),
     )
     clean_p.add_argument(

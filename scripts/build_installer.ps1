@@ -90,6 +90,24 @@ try {
     }
 
 
+    # --- Ensure branding icon exists before NSIS compilation ---
+    $icoPath = Join-Path $ProjectRoot "assets\modsmith.ico"
+    $pngPath = Join-Path $ProjectRoot "assets\modsmith-logo.png"
+    if (-not (Test-Path $icoPath)) {
+        if (Test-Path $pngPath) {
+            Write-Host "Branding ICO not found, but source PNG exists. Running make_icon.ps1..." -ForegroundColor Yellow
+            $makeIconScript = Join-Path $ProjectRoot "scripts\make_icon.ps1"
+            & powershell -ExecutionPolicy Bypass -File $makeIconScript
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "make_icon.ps1 failed to generate branding icon."
+                exit 1
+            }
+        } else {
+            Write-Error "Branding error: Neither assets/modsmith.ico nor assets/modsmith-logo.png exists. Official builds must be branded."
+            exit 1
+        }
+    }
+
     # --- Step 3: Run NSIS ---
     Write-Host ""
     Write-Host "[2/3] Compiling NSIS installer..." -ForegroundColor Yellow
@@ -109,7 +127,26 @@ Install NSIS from https://nsis.sourceforge.io/Download and add it to PATH.
         exit 1
     }
 
-    & makensis $nsiFile
+    # Resolve the absolute path of the icon to pass to NSIS
+    $IconPath = (Resolve-Path "$ProjectRoot\assets\modsmith.ico").Path
+    $IconExists = Test-Path $IconPath
+    $IconSize   = if ($IconExists) { (Get-Item $IconPath).Length } else { 0 }
+    Write-Host "NSIS icon path : $IconPath" -ForegroundColor Cyan
+    Write-Host "Icon exists    : $IconExists"
+    Write-Host "Icon size      : $([math]::Round($IconSize / 1KB, 2)) KB"
+
+    if (-not $IconExists) {
+        Write-Error "Icon file not found before NSIS compile: $IconPath"
+        exit 1
+    }
+
+    # Use an arg array to avoid PowerShell quote-expansion issues with /D defines
+    $MakensisArgs = @(
+        "/DMODSMITH_ICON=$IconPath",
+        $nsiFile
+    )
+    Write-Host "makensis args  : $MakensisArgs" -ForegroundColor Cyan
+    & makensis @MakensisArgs
     if ($LASTEXITCODE -ne 0) {
         Write-Error "makensis failed with exit code $LASTEXITCODE"
         exit 1

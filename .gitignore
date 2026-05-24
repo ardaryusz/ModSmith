@@ -20,6 +20,7 @@ build/
 dist/
 site/
 pip-wheel-metadata/
+assets/icon-preview/
 
 # IDE / editor
 .vscode/

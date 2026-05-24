@@ -52,6 +52,24 @@ After compiling a new version of the installer, perform the following steps to v
 
 ---
 
+## ModSmith Branding & Icons
+
+ModSmith uses a custom branding icon for the standalone executable, installer wizard, uninstaller, and Start Menu shortcuts:
+
+* **PNG Source Logo (`assets/modsmith-logo.png`):** The primary source artwork (flat icon depicting a hammer striking a pixel-style cube).
+* **ICO Icon (`assets/modsmith.ico`):** The compiled multi-size Windows icon file. It contains sizes: 16, 24, 32, 48, 64, 128, and 256 pixels.
+
+### Regenerating the ICO Icon
+If you modify the source logo `assets/modsmith-logo.png`, you can regenerate the icon by running the following script:
+
+```powershell
+.\scripts\make_icon.ps1
+```
+
+*Note: The script requires the Python `Pillow` library. If it is missing, you can install it using `py -m pip install Pillow`.*
+
+---
+
 ## Installer Development & Troubleshooting
 
 ### `makensis` Not Found on PATH

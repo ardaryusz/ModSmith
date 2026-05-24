@@ -40,6 +40,24 @@ try {
         }
     }
 
+    # --- Check or generate branding icon ---
+    $icoPath = Join-Path $ProjectRoot "assets\modsmith.ico"
+    $pngPath = Join-Path $ProjectRoot "assets\modsmith-logo.png"
+    if (-not (Test-Path $icoPath)) {
+        if (Test-Path $pngPath) {
+            Write-Host "Branding ICO not found, but source PNG exists. Running make_icon.ps1..." -ForegroundColor Yellow
+            $makeIconScript = Join-Path $ProjectRoot "scripts\make_icon.ps1"
+            & powershell -ExecutionPolicy Bypass -File $makeIconScript
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "make_icon.ps1 failed to generate branding icon."
+                exit 1
+            }
+        } else {
+            Write-Error "Branding error: Neither assets/modsmith.ico nor assets/modsmith-logo.png exists. Official builds must be branded."
+            exit 1
+        }
+    }
+
     # --- Run PyInstaller ---
     Write-Host ""
     Write-Host "[2/4] Running PyInstaller..." -ForegroundColor Yellow
