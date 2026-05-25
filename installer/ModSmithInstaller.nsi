@@ -37,8 +37,12 @@
 ; General
 ; --------------------------------------------------------------------------
 
+!ifndef MODSMITH_VERSION
+  !define MODSMITH_VERSION "0.0.0-dev"
+!endif
+
 !define PRODUCT_NAME      "ModSmith"
-!define PRODUCT_VERSION   "1.0.0"
+!define PRODUCT_VERSION   "${MODSMITH_VERSION}"
 !define PRODUCT_PUBLISHER "ModSmith Project"
 !define PRODUCT_WEB       "https://github.com/modsmith"
 
@@ -76,6 +80,37 @@ SetCompressor /SOLID lzma
 ; --------------------------------------------------------------------------
 
 Var UserDataDir
+
+; --------------------------------------------------------------------------
+; Existing Install Detection
+; --------------------------------------------------------------------------
+
+Function .onInit
+  ; Check registry
+  ReadRegStr $1 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "UninstallString"
+  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayVersion"
+  
+  ; Check if registry uninstall string is non-empty
+  StrCmp $1 "" check_file exists_found
+
+check_file:
+  ; Check if Uninstall.exe exists in the installation directory
+  IfFileExists "$INSTDIR\Uninstall.exe" exists_found no_existing
+
+exists_found:
+  ; Set version string
+  StrCmp $0 "" version_unknown version_known
+version_unknown:
+  StrCpy $0 "unknown"
+  Goto show_message
+version_known:
+  ; $0 already has the version
+show_message:
+  MessageBox MB_YESNO|MB_ICONQUESTION "An existing ModSmith installation was found.$\nInstalled version: $0$\nNew version: ${MODSMITH_VERSION}$\n$\nContinue to reinstall/repair ModSmith?" IDYES no_existing
+    Abort
+
+no_existing:
+FunctionEnd
 
 ; --------------------------------------------------------------------------
 ; Installer Sections
@@ -130,6 +165,8 @@ Section "!ModSmith Core (required)" SEC_CORE
         "UninstallString" "$\"$INSTDIR\Uninstall.exe$\""
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" \
         "InstallLocation" "$INSTDIR"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" \
+        "DisplayIcon" "$INSTDIR\modsmith.exe,0"
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" \
         "NoModify" 1
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" \

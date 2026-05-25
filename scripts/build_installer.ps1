@@ -142,9 +142,13 @@ Install NSIS from https://nsis.sourceforge.io/Download and add it to PATH.
 
     # Use an arg array to avoid PowerShell quote-expansion issues with /D defines
     $MakensisArgs = @(
+        "/DMODSMITH_VERSION=$Version",
         "/DMODSMITH_ICON=$IconPath",
         $nsiFile
     )
+    Write-Host "Version passed to NSIS   : $Version" -ForegroundColor Cyan
+    Write-Host "Icon path passed to NSIS : $IconPath" -ForegroundColor Cyan
+    Write-Host "NSIS script path         : $nsiFile" -ForegroundColor Cyan
     Write-Host "makensis args  : $MakensisArgs" -ForegroundColor Cyan
     & makensis @MakensisArgs
     if ($LASTEXITCODE -ne 0) {
@@ -164,6 +168,7 @@ Install NSIS from https://nsis.sourceforge.io/Download and add it to PATH.
     # Final named installer path
     $finalInstallerName = "modsmith_${Version}_${Arch}-setup.exe"
     $finalInstallerPath = Join-Path $ProjectRoot "dist\installer\$finalInstallerName"
+    Write-Host "Final installer path     : $finalInstallerPath" -ForegroundColor Cyan
 
     # Remove existing named installer if it exists
     if (Test-Path $finalInstallerPath) {
