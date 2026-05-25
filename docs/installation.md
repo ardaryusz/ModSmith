@@ -50,15 +50,30 @@ Start-Process -FilePath $TempPath -Verb RunAs -Wait
 * **Application Files (Read-Only):**
   `C:\Program Files\ModSmith`
   *(Note: ModSmith does not use the installation directory in Program Files to store writable project data due to Windows permission constraints).*
-* **User Data & Workspace (Writable):**
-  `%USERPROFILE%\Documents\ModSmith`
+* **User Data & Workspace Home (Writable):**
+  `%USERPROFILE%\Desktop\ModSmith` (Default, unless customized during setup)
   All templates, config files, recipes, and compiled outputs will live here.
 
-### 3. Understanding `MODSMITH_HOME`
-During installation, the setup wizard defines a user-level environment variable named `MODSMITH_HOME` set to your user data path (e.g., `C:\Users\<You>\Documents\ModSmith`). 
-This environment variable tells `modsmith.exe` where to automatically locate your templates, workspace configuration, and generated projects.
+### 3. Home Directory Selection & `MODSMITH_HOME`
+During installation, the setup wizard will present two directory pages:
+1. **Install Location** (e.g. `C:\Program Files\ModSmith`) for program binaries.
+2. **Home Location** (e.g. `C:\Users\<You>\Desktop\ModSmith`) where workspaces, templates, generated mods, and built jars reside.
 
-If you ever wish to use a different folder as your workspace root without passing explicit command-line flags, you can change the `MODSMITH_HOME` environment variable value in your Windows system settings.
+The installer defines a user-level environment variable named `MODSMITH_HOME` pointing to this home path. This environment variable tells `modsmith` where to automatically locate your templates, workspace configuration, and generated projects.
+
+#### Changing the Home Directory Later
+If you ever wish to use a different folder as your workspace root without passing explicit command-line flags, you can run the following command to persistently change it:
+```bash
+modsmith home set "D:\ModSmith"
+```
+*Note: You will need to open a new terminal window for the environment variable change to take effect in your command shells.*
+
+#### Manual Workspace Migration
+If you are moving from an existing installation (e.g., from `%USERPROFILE%\Documents\ModSmith` to the new `%USERPROFILE%\Desktop\ModSmith` default):
+1. **Copy** your old ModSmith home folder contents to the new folder location.
+2. Run `modsmith home set <new location>` to point the environment to the new location.
+3. Run `modsmith doctor` to verify that all configuration and templates are parsed correctly.
+4. Manually **delete** the old folder only after you have fully verified that the new workspace is functioning correctly.
 
 ---
 

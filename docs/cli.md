@@ -56,6 +56,19 @@ modsmith clean
 modsmith clean --force
 ```
 
+### `home`
+Manages the `MODSMITH_HOME` environment variable and directory structures.
+* **`show`**: Prints the current effective home folder path and resolved absolute directories.
+* **`set <path>`**: Creates the standard subfolders at the target path, and persistently sets the `MODSMITH_HOME` environment variable (Windows only).
+* **`unset`**: Persistently deletes the `MODSMITH_HOME` environment variable (Windows only).
+* **`open`**: Launches the current effective home directory in your system file explorer.
+```bash
+modsmith home show
+modsmith home set <path>
+modsmith home unset
+modsmith home open
+```
+
 ---
 
 ## Examples
@@ -87,4 +100,16 @@ modsmith clean --force
 * **Force delete the generated mod directory without confirmation:**
   ```bash
   modsmith clean --force
+  ```
+* **Show the current active workspace home path:**
+  ```bash
+  modsmith home show
+  ```
+* **Set the home folder to a custom location:**
+  ```bash
+  modsmith home set "D:\ModSmithWorkspace"
+  ```
+* **Open the workspace folder in File Explorer:**
+  ```bash
+  modsmith home open
   ```

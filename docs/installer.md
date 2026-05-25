@@ -18,18 +18,19 @@ The installer script (`installer/ModSmithInstaller.nsi`) is designed to provide 
 1. **Program Files Installation:**
    Copies the application files to `C:\Program Files\ModSmith` (user-configurable). This folder is kept read-only for normal users.
 2. **User Data Directory Creation:**
-   Automatically initializes the user's workspace folders under the current user's Documents folder: `%USERPROFILE%\Documents\ModSmith`.
+   Allows the user to select the home directory during installation (default: `%USERPROFILE%\Desktop\ModSmith`).
+   Automatically initializes the user's workspace folders inside the selected home directory.
    This includes folders like `MODTEMPLATES/`, `WORKSPACE/`, `WORKSPACE/RECIPES/`, `WORKSPACE/DIST/`, and `MODS/`.
 3. **Environment Setup:**
-   Writes `MODSMITH_HOME` to `HKCU\Environment` set to the Documents path so the app knows where to run.
+   Writes `MODSMITH_HOME` to `HKCU\Environment` set to the selected home path so the app knows where to run.
 4. **PATH Modification (Optional):**
    If checked, reads the current user `Path` registry value, appends the installation path safely (handling empty PATH or duplicates), writes it back, and broadcasts `WM_SETTINGCHANGE`.
 5. **Start Menu Shortcuts:**
-   Creates a "ModSmith Command Prompt" shortcut that opens PowerShell starting inside your Documents ModSmith folder, displaying a welcome message.
+   Creates a "ModSmith Command Prompt" shortcut that opens PowerShell starting inside your ModSmith home folder, displaying a welcome message.
 6. **Safe Uninstall:**
    * Cleans up registry entries, shortcuts, and application files under Program Files.
    * Restores `Path` and `MODSMITH_HOME` environment variables.
-   * **Intentionally preserves user data:** The uninstaller does **not** delete files under `Documents\ModSmith` by default, protecting custom templates, recipes, and mod files.
+   * **Intentionally preserves user data:** The uninstaller does **not** delete files under the home folder by default, protecting custom templates, recipes, and mod files.
 
 ---
 
@@ -40,15 +41,15 @@ After compiling a new version of the installer, perform the following steps to v
 1. [ ] Double-click `modsmith_<version>_<arch>-setup.exe` (e.g., `modsmith_1.0.0_x64-setup.exe`) to run the installation wizard.
 2. [ ] Choose a custom path or keep the default `C:\Program Files\ModSmith` and click Next.
 3. [ ] Keep all components checked (Core, PATH, Start Menu) and click Install.
-4. [ ] Verify that the folder `%USERPROFILE%\Documents\ModSmith` exists and contains sample JSON files.
+4. [ ] Verify that the custom or default home folder (typically `%USERPROFILE%\Desktop\ModSmith`) exists and contains sample JSON files.
 5. [ ] Open the **ModSmith Command Prompt** from the Start Menu.
-6. [ ] Verify that PowerShell opens inside `%USERPROFILE%\Documents\ModSmith` and shows a cyan colored title.
+6. [ ] Verify that PowerShell opens inside the home folder and shows a cyan colored title.
 7. [ ] Run `modsmith --version` and `modsmith validate` inside the terminal to verify they run successfully.
 8. [ ] Go to Windows Settings > Apps > Installed Apps, select ModSmith, and click **Uninstall**.
 9. [ ] Run the uninstaller.
 10. [ ] Verify that files under `C:\Program Files\ModSmith` are deleted.
 11. [ ] Verify that `MODSMITH_HOME` and the PATH additions are cleaned up from the registry.
-12. [ ] Confirm that your workspace directories and custom files inside `%USERPROFILE%\Documents\ModSmith` **remain intact**.
+12. [ ] Confirm that your workspace directories and custom files inside the home directory **remain intact**.
 
 ---
 

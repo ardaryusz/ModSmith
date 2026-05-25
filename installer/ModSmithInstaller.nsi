@@ -59,13 +59,24 @@ InstallDirRegKey HKCU "Software\${PRODUCT_NAME}" "InstallDir"
 RequestExecutionLevel admin
 SetCompressor /SOLID lzma
 
+Var ModSmithHomeDir
+
 ; --------------------------------------------------------------------------
 ; MUI Settings
 ; --------------------------------------------------------------------------
 
 !define MUI_ABORTWARNING
 !insertmacro MUI_PAGE_WELCOME
+
+; 1. Program installation directory (controls $INSTDIR)
 !insertmacro MUI_PAGE_DIRECTORY
+
+; 2. Home directory (controls $ModSmithHomeDir)
+!define MUI_DIRECTORYPAGE_VARIABLE          $ModSmithHomeDir
+!define MUI_DIRECTORYPAGE_TEXT_TOP          "Choose where ModSmith should store your workspaces, templates, generated mods, and built jars.$\n$\nThis is separate from the program install location."
+!define MUI_DIRECTORYPAGE_TEXT_DESTINATION  "ModSmith Home Directory"
+!insertmacro MUI_PAGE_DIRECTORY
+
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -86,6 +97,17 @@ Var UserDataDir
 ; --------------------------------------------------------------------------
 
 Function .onInit
+  ; Pre-fill ModSmithHomeDir
+  ReadRegStr $ModSmithHomeDir HKCU "Software\${PRODUCT_NAME}" "HomeDir"
+  StrCmp $ModSmithHomeDir "" 0 home_dir_done
+  
+  ReadRegStr $ModSmithHomeDir HKCU "Environment" "MODSMITH_HOME"
+  StrCmp $ModSmithHomeDir "" 0 home_dir_done
+  
+  StrCpy $ModSmithHomeDir "$DESKTOP\ModSmith"
+  
+home_dir_done:
+
   ; Check registry
   ReadRegStr $1 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "UninstallString"
   ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayVersion"
@@ -125,8 +147,7 @@ Section "!ModSmith Core (required)" SEC_CORE
     File "..\README.md"
 
     ; --- Determine user data directory ---
-    ; Use $DOCUMENTS which resolves to the current user's Documents folder
-    StrCpy $UserDataDir "$DOCUMENTS\${PRODUCT_NAME}"
+    StrCpy $UserDataDir "$ModSmithHomeDir"
 
     ; --- Create user data folder structure ---
     CreateDirectory "$UserDataDir"
@@ -155,6 +176,7 @@ Section "!ModSmith Core (required)" SEC_CORE
     ; --- Write registry keys for uninstaller ---
     WriteRegStr HKCU "Software\${PRODUCT_NAME}" "InstallDir" "$INSTDIR"
     WriteRegStr HKCU "Software\${PRODUCT_NAME}" "UserDataDir" "$UserDataDir"
+    WriteRegStr HKCU "Software\${PRODUCT_NAME}" "HomeDir" "$ModSmithHomeDir"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" \
         "DisplayName" "${PRODUCT_NAME}"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" \
@@ -460,7 +482,7 @@ Section "Uninstall"
         SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:${ENV_REG_KEY}" /TIMEOUT=5000
         Goto modsmith_home_done
     check_default_path:
-    StrCmp $0 "$DOCUMENTS\${PRODUCT_NAME}" 0 modsmith_home_done
+    StrCmp $0 "$DESKTOP\${PRODUCT_NAME}" 0 modsmith_home_done
         DeleteRegValue HKCU "${ENV_REG_KEY}" "MODSMITH_HOME"
         SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:${ENV_REG_KEY}" /TIMEOUT=5000
     modsmith_home_done:

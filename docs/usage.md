@@ -53,7 +53,7 @@ Here is a conceptual walk-through of creating a mod called **Easy Peasy Gunpowde
 ### Step 1: Initialize folders
 Create the folder structure (if not using the Windows installer which sets this up automatically):
 ```
-Documents/ModSmith/
+Desktop/ModSmith/
 ├── MODTEMPLATES/
 ├── WORKSPACE/
 │   ├── DETAILS/

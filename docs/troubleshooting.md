@@ -64,8 +64,23 @@ This page lists common errors and solutions encountered when using, compiling, o
 
 ---
 
+## Home Directory & Environment Variable Issues
+
+### 10. `MODSMITH_HOME` change is not appearing in terminal/shells
+* **Cause:** When you set the environment variable using `modsmith home set`, the variable is saved persistently in the user registry, but existing shell/terminal sessions do not reload their environment automatically.
+* **Solution:** Open a new terminal window or restart your command prompt or VS Code for the environment changes to take effect.
+
+### 11. Existing files are missing after changing the Home location
+* **Cause:** ModSmith does not automatically migrate your existing data to prevent accidental data loss.
+* **Solution:** Follow the manual migration steps:
+  1. Copy the files/folders from your old home directory (e.g. `%USERPROFILE%\Documents\ModSmith`) to your new home directory (e.g. `%USERPROFILE%\Desktop\ModSmith`).
+  2. Run `modsmith doctor` to verify the files are detected correctly.
+  3. Delete the old folder only after successful validation.
+
+---
+
 ## Git & GitHub Issues
 
-### 10. Push to remote rejected because the remote contains existing files
+### 12. Push to remote rejected because the remote contains existing files
 * **Cause:** The remote Git repository contains files (like `README.md` or `LICENSE`) that do not exist in your local generated target branch.
 * **Solution:** Run `git pull origin <branch-name> --allow-unrelated-histories` to merge remote files before pushing, or force-push if you want to overwrite the remote branch.

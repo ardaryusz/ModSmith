@@ -188,6 +188,43 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Include development and release-packaging checks",
     )
 
+    # ── home ──────────────────────────────────────────────────────────────────
+    home_p = sub.add_parser(
+        "home",
+        help="Manage the MODSMITH_HOME environment variable and directories",
+        description="Show, set, unset, or open the persistent ModSmith home directory.",
+    )
+    home_sub = home_p.add_subparsers(dest="home_command", metavar="SUBCOMMAND")
+    home_sub.required = True
+
+    # home show
+    home_sub.add_parser(
+        "show",
+        help="Show the current effective ModSmith home directory",
+    )
+
+    # home set <path>
+    home_set_p = home_sub.add_parser(
+        "set",
+        help="Set the ModSmith home directory persistently",
+    )
+    home_set_p.add_argument(
+        "path",
+        help="The target path for the ModSmith home directory",
+    )
+
+    # home unset
+    home_sub.add_parser(
+        "unset",
+        help="Remove the ModSmith home directory persistently",
+    )
+
+    # home open
+    home_sub.add_parser(
+        "open",
+        help="Open the current ModSmith home directory in file explorer",
+    )
+
     return parser
 
 
@@ -394,6 +431,70 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_home(args: argparse.Namespace) -> int:
+    """Handle ``modsmith home``.
+
+    Dispatches to show, set, unset, or open subcommands.
+    """
+    from modsmith.home import (
+        get_effective_home,
+        ensure_home_structure,
+        set_user_home,
+        unset_user_home,
+        open_home,
+    )
+
+    h_cmd = args.home_command
+
+    if h_cmd == "show":
+        effective = get_effective_home()
+        if effective:
+            print(f"MODSMITH_HOME is set: {effective}")
+        else:
+            print("MODSMITH_HOME is unset. Relative defaults are active.")
+            print("  WORKSPACE, MODTEMPLATES, MODS")
+
+        workspace_dir, templates_dir, mods_dir = _resolve_dirs(args)
+        print("Resolved paths:")
+        print(f"  Workspace: {workspace_dir}")
+        print(f"  Templates: {templates_dir}")
+        print(f"  Mods:      {mods_dir}")
+        return 0
+
+    elif h_cmd == "set":
+        target_path = Path(args.path)
+        # Create standard home structure
+        ensure_home_structure(target_path)
+        # Set persistently
+        set_user_home(target_path)
+
+        # print success status
+        print(f"[OK] Set MODSMITH_HOME to: {target_path.resolve()}")
+        print("[OK] Created/verified workspace folders")
+        print("[INFO] Open a new terminal for the change to appear in new shells.")
+        print("[INFO] Existing data was not moved automatically.")
+        return 0
+
+    elif h_cmd == "unset":
+        unset_user_home()
+        print("[OK] Removed MODSMITH_HOME from user environment.")
+        print("[INFO] Existing ModSmith data folders were not deleted.")
+        print("[INFO] Open a new terminal for the change to appear.")
+        return 0
+
+    elif h_cmd == "open":
+        effective = get_effective_home()
+        if effective:
+            open_home(effective)
+        else:
+            print("[INFO] MODSMITH_HOME is unset. Relative defaults are active.")
+            print("Opening the current working directory instead.")
+            open_home(Path.cwd())
+        return 0
+
+    return 1
+
+
 # ---------------------------------------------------------------------------
 # Dispatch table and entry point
 # ---------------------------------------------------------------------------
@@ -404,6 +505,7 @@ _COMMAND_HANDLERS: dict[str, object] = {
     "build": cmd_build,
     "clean": cmd_clean,
     "doctor": cmd_doctor,
+    "home": cmd_home,
 }
 
 
