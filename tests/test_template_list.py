@@ -258,5 +258,81 @@ class TestTemplateListCLI(unittest.TestCase):
             self.assertEqual(ctx.exception.code, 1)
 
 
+class TestLocalDryRun(unittest.TestCase):
+    """Tests for global and command-local --dry-run parser validation."""
+
+    @patch("modsmith.cli.cmd_generate")
+    def test_global_dry_run_generate(self, mock_cmd):
+        mock_cmd.return_value = 0
+        with patch.dict("modsmith.cli._COMMAND_HANDLERS", {"generate": mock_cmd}):
+            with patch("sys.argv", ["modsmith", "--dry-run", "generate"]):
+                with self.assertRaises(SystemExit) as ctx:
+                    main()
+                self.assertEqual(ctx.exception.code, 0)
+        mock_cmd.assert_called_once()
+        args = mock_cmd.call_args[0][0]
+        self.assertTrue(args.dry_run)
+
+    @patch("modsmith.cli.cmd_generate")
+    def test_command_dry_run_generate(self, mock_cmd):
+        mock_cmd.return_value = 0
+        with patch.dict("modsmith.cli._COMMAND_HANDLERS", {"generate": mock_cmd}):
+            with patch("sys.argv", ["modsmith", "generate", "--dry-run"]):
+                with self.assertRaises(SystemExit) as ctx:
+                    main()
+                self.assertEqual(ctx.exception.code, 0)
+        mock_cmd.assert_called_once()
+        args = mock_cmd.call_args[0][0]
+        self.assertTrue(args.dry_run)
+
+    @patch("modsmith.cli.cmd_generate")
+    def test_both_dry_run_generate(self, mock_cmd):
+        mock_cmd.return_value = 0
+        with patch.dict("modsmith.cli._COMMAND_HANDLERS", {"generate": mock_cmd}):
+            with patch("sys.argv", ["modsmith", "--dry-run", "generate", "--dry-run"]):
+                with self.assertRaises(SystemExit) as ctx:
+                    main()
+                self.assertEqual(ctx.exception.code, 0)
+        mock_cmd.assert_called_once()
+        args = mock_cmd.call_args[0][0]
+        self.assertTrue(args.dry_run)
+
+    @patch("modsmith.cli.cmd_build")
+    def test_command_dry_run_build(self, mock_cmd):
+        mock_cmd.return_value = 0
+        with patch.dict("modsmith.cli._COMMAND_HANDLERS", {"build": mock_cmd}):
+            with patch("sys.argv", ["modsmith", "build", "--dry-run"]):
+                with self.assertRaises(SystemExit) as ctx:
+                    main()
+                self.assertEqual(ctx.exception.code, 0)
+        mock_cmd.assert_called_once()
+        args = mock_cmd.call_args[0][0]
+        self.assertTrue(args.dry_run)
+
+    @patch("modsmith.cli.cmd_clean")
+    def test_command_dry_run_clean(self, mock_cmd):
+        mock_cmd.return_value = 0
+        with patch.dict("modsmith.cli._COMMAND_HANDLERS", {"clean": mock_cmd}):
+            with patch("sys.argv", ["modsmith", "clean", "--dry-run"]):
+                with self.assertRaises(SystemExit) as ctx:
+                    main()
+                self.assertEqual(ctx.exception.code, 0)
+        mock_cmd.assert_called_once()
+        args = mock_cmd.call_args[0][0]
+        self.assertTrue(args.dry_run)
+
+    @patch("modsmith.cli.cmd_validate")
+    def test_validate_without_dry_run(self, mock_cmd):
+        mock_cmd.return_value = 0
+        with patch.dict("modsmith.cli._COMMAND_HANDLERS", {"validate": mock_cmd}):
+            with patch("sys.argv", ["modsmith", "validate"]):
+                with self.assertRaises(SystemExit) as ctx:
+                    main()
+                self.assertEqual(ctx.exception.code, 0)
+        mock_cmd.assert_called_once()
+        args = mock_cmd.call_args[0][0]
+        self.assertFalse(args.dry_run)
+
+
 if __name__ == "__main__":
     unittest.main()

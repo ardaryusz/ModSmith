@@ -15,12 +15,13 @@ Global options must be passed **before** the subcommand.
 * **`-m, --mods <path>`**
   Set the path to the generated mods directory. Overrides `MODSMITH_HOME`.
 * **`--dry-run`**
-  Print details about what files, directories, branches, or builds would be run without actually modifying them on disk.
+  Print details about what files, directories, branches, or builds would be run without actually modifying them on disk. Can be passed as a global flag (before the command) or a command-local flag (after `generate`, `build`, or `clean`).
 
-> [!IMPORTANT]
-> The `--dry-run` flag is a global option and **must be placed before** the command name.
-> * **Correct:** `modsmith --dry-run generate`
-> * **Incorrect:** `modsmith generate --dry-run` (this will cause an unrecognized argument error)
+> [!TIP]
+> You can pass `--dry-run` either globally or locally for the `generate`, `build`, and `clean` commands.
+> * **Both positions are supported:**
+>   - `modsmith --dry-run generate`
+>   - `modsmith generate --dry-run`
 
 ---
 

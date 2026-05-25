@@ -97,6 +97,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dry-run",
         action="store_true",
+        dest="global_dry_run",
         help="Print planned actions without writing files or running Git commands",
     )
 
@@ -142,6 +143,12 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="BRANCH",
         help="Generate only the specified target branch (matched by branch name)",
     )
+    generate_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        dest="command_dry_run",
+        help="Print planned actions without writing files or running Git commands",
+    )
 
     # ── build ─────────────────────────────────────────────────────────────────
     build_p = sub.add_parser(
@@ -157,6 +164,12 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="BRANCH",
         help="Build only the specified target branch",
     )
+    build_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        dest="command_dry_run",
+        help="Print planned actions without writing files or running Git commands",
+    )
 
     # ── clean ─────────────────────────────────────────────────────────────────
     clean_p = sub.add_parser(
@@ -170,6 +183,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="Skip the confirmation prompt",
+    )
+    clean_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        dest="command_dry_run",
+        help="Print planned actions without writing files or running Git commands",
     )
 
     # ── doctor ────────────────────────────────────────────────────────────────
@@ -592,6 +611,7 @@ def main(argv: list[str] | None = None) -> None:
     """Parse *argv* (or ``sys.argv[1:]``) and dispatch to the appropriate handler."""
     parser = _build_parser()
     args = parser.parse_args(argv)
+    args.dry_run = bool(getattr(args, "global_dry_run", False) or getattr(args, "command_dry_run", False))
 
     handler = _COMMAND_HANDLERS.get(args.command)
     if handler is None:
