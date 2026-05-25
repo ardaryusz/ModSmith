@@ -225,6 +225,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Open the current ModSmith home directory in file explorer",
     )
 
+    # ── template ──────────────────────────────────────────────────────────────
+    template_p = sub.add_parser(
+        "template",
+        help="List and verify available mod templates",
+        description="List and verify available templates under MODTEMPLATES.",
+    )
+    template_sub = template_p.add_subparsers(dest="template_command", metavar="SUBCOMMAND")
+    template_sub.required = True
+
+    # template list
+    template_sub.add_parser(
+        "list",
+        help="List all templates and report whether each one is usable",
+    )
+
     return parser
 
 
@@ -495,6 +510,69 @@ def cmd_home(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_template(args: argparse.Namespace) -> int:
+    """Handle ``modsmith template`` commands."""
+    t_cmd = args.template_command
+
+    if t_cmd == "list":
+        _, templates_dir, _ = _resolve_dirs(args)
+        from modsmith.template_listing import list_templates
+
+        print(f"  [INFO]  Scanning templates directory: {templates_dir}")
+        result = list_templates(templates_dir)
+
+        # Print all template details
+        for t in result.templates:
+            print(f"  [INFO]  Template: {t.name}")
+            print(f"  [INFO]    Path: {t.path}")
+
+            if t.has_descriptor:
+                print("  [OK]      modsmith-template.json exists")
+            else:
+                print("  [ERROR]   modsmith-template.json is missing")
+
+            if t.descriptor_valid:
+                print("  [OK]      Descriptor parses successfully")
+                print(f"  [INFO]      Loader:            {t.loader}")
+                print(f"  [INFO]      Minecraft version: {t.minecraft_version}")
+                print(f"  [INFO]      Recipe folder:     {t.recipe_folder}")
+                print(f"  [INFO]      Recipe format:     {t.recipe_format}")
+                print(f"  [INFO]      JAR loader suffix: {t.jar_loader_suffix}")
+            elif t.has_descriptor:
+                print(f"  [ERROR]   Descriptor failed to parse: {t.error_message}")
+
+            if t.has_gradlew and t.has_gradlew_bat:
+                print("  [OK]      gradlew and gradlew.bat both exist")
+            elif t.has_gradlew:
+                print("  [WARN]    gradlew exists, but gradlew.bat is missing")
+            elif t.has_gradlew_bat:
+                print("  [WARN]    gradlew.bat exists, but gradlew is missing")
+            else:
+                print("  [WARN]    Both gradlew and gradlew.bat are missing")
+
+            if t.has_gradle_wrapper_jar:
+                print("  [OK]      gradle/wrapper/gradle-wrapper.jar exists")
+            else:
+                print("  [ERROR]   gradle/wrapper/gradle-wrapper.jar is missing")
+
+        # Print global errors/warnings if any
+        for err in result.errors:
+            print(f"  [ERROR] {err}")
+        for warn in result.warnings:
+            print(f"  [WARN]  {warn}")
+
+        if result.ok:
+            if not result.templates:
+                return 0
+            print("  [OK]    All templates are valid and usable.")
+            return 0
+        else:
+            print(f"  [ERROR] Template validation failed with {len(result.errors)} error(s).")
+            return 1
+
+    return 1
+
+
 # ---------------------------------------------------------------------------
 # Dispatch table and entry point
 # ---------------------------------------------------------------------------
@@ -506,6 +584,7 @@ _COMMAND_HANDLERS: dict[str, object] = {
     "clean": cmd_clean,
     "doctor": cmd_doctor,
     "home": cmd_home,
+    "template": cmd_template,
 }
 
 

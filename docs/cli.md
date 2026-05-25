@@ -56,6 +56,13 @@ modsmith clean
 modsmith clean --force
 ```
 
+### `template`
+Manages and lists available mod templates in `MODTEMPLATES/`.
+* **`list`**: Scans all template subfolders under `MODTEMPLATES/` and verifies that their descriptors (`modsmith-template.json`) and build wrappers exist and are valid.
+```bash
+modsmith template list
+```
+
 ### `home`
 Manages the `MODSMITH_HOME` environment variable and directory structures.
 * **`show`**: Prints the current effective home folder path and resolved absolute directories.
@@ -112,4 +119,12 @@ modsmith home open
 * **Open the workspace folder in File Explorer:**
   ```bash
   modsmith home open
+  ```
+* **List and verify all templates under MODTEMPLATES:**
+  ```bash
+  modsmith template list
+  ```
+* **List templates under a custom directory:**
+  ```bash
+  modsmith --templates "C:\custom\templates" template list
   ```

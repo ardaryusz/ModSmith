@@ -49,3 +49,22 @@ Below is an example of a template descriptor for a Forge 1.20.1 template:
 
 > [!NOTE]
 > If a template lacks a `modsmith-template.json` descriptor, ModSmith will display a warning during the `validate` step. It will then apply robust heuristics based on the presence of common files (like `fabric.mod.json` or `mods.toml`) to determine settings automatically.
+
+---
+
+## Template Listing & Verification
+
+You can list all available templates under `MODTEMPLATES/` and verify their configurations and build wrapper files using the `modsmith template list` command:
+
+```bash
+modsmith template list
+```
+
+This scans all template child directories and checks:
+- The template name and absolute path.
+- The presence and validity of `modsmith-template.json`.
+- The parsed details (loader, MC version, recipe configurations, etc.).
+- The existence of Gradle wrapper scripts (`gradlew`, `gradlew.bat`) and `gradle-wrapper.jar`.
+
+If any template is missing its descriptor, has invalid JSON, or lacks `gradle-wrapper.jar`, the command reports the errors and exits with a non-zero status code (`1`). Missing scripts like `gradlew` or `gradlew.bat` generate warnings but do not fail the command (exit `0`).
+

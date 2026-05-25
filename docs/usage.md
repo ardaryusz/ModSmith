@@ -63,7 +63,7 @@ Desktop/ModSmith/
 ```
 
 ### Step 2: Add Unpacked Templates
-Download standard Fabric, Forge, or NeoForge MDKs, unzip them, and place them into `MODTEMPLATES/` (e.g., `MODTEMPLATES/forge-1.20.1`). Make sure the gradle wrapper is present.
+Download standard Fabric, Forge, or NeoForge MDKs, unzip them, and place them into `MODTEMPLATES/` (e.g., `MODTEMPLATES/forge-1.20.1`). Make sure the gradle wrapper is present. You can verify that all your templates are valid and ready to use by running `modsmith template list`.
 
 ### Step 3: Define Mod Configuration
 Create `WORKSPACE/DETAILS/modsmith.json`:

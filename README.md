@@ -86,6 +86,7 @@ Once complete, your compiled mod `.jar` files will be placed inside `WORKSPACE/D
 - `modsmith generate` — Generate project templates and convert recipes. Add `--force` to overwrite existing.
 - `modsmith build` — Check out targets and execute Gradle wrapper build tasks.
 - `modsmith clean` — Delete the generated mod projects directory.
+- `modsmith template list` — Scan and verify all available mod templates under `MODTEMPLATES`.
 - `modsmith home <SUBCOMMAND>` — Manage your ModSmith home directory and workspaces persistently (show, set, unset, open).
 
 > [!WARNING]
