@@ -172,6 +172,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip the confirmation prompt",
     )
 
+    # ── doctor ────────────────────────────────────────────────────────────────
+    doctor_p = sub.add_parser(
+        "doctor",
+        help="Check the environment and report issues",
+        description=(
+            "Inspects the local ModSmith environment, checking directories, "
+            "configuration, recipes, templates, and path tools. "
+            "Exits 0 on success, 1 if any errors are found."
+        ),
+    )
+    doctor_p.add_argument(
+        "--dev",
+        action="store_true",
+        help="Include development and release-packaging checks",
+    )
+
     return parser
 
 
@@ -344,6 +360,40 @@ def cmd_clean(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Handle ``modsmith doctor``.
+
+    Runs diagnostic checks on workspace, paths, config, recipes, and tools.
+    Prints status with appropriate prefixes. Returns 0 if ok, 1 if error.
+    """
+    workspace_dir, templates_dir, mods_dir = _resolve_dirs(args)
+    from modsmith.doctor import diagnose_environment
+
+    result = diagnose_environment(
+        workspace_dir=workspace_dir,
+        templates_dir=templates_dir,
+        mods_dir=mods_dir,
+        dev_mode=args.dev,
+    )
+
+    # Print logs
+    for info in result.infos:
+        print(f"  [INFO]  {info}")
+
+    for warn in result.warnings:
+        print(f"  [WARN]  {warn}")
+
+    for err in result.errors:
+        print(f"  [ERROR] {err}")
+
+    # Print summary
+    print(f"\nDoctor finished: {len(result.errors)} error(s), {len(result.warnings)} warning(s)")
+
+    if result.ok:
+        return 0
+    return 1
+
+
 # ---------------------------------------------------------------------------
 # Dispatch table and entry point
 # ---------------------------------------------------------------------------
@@ -353,6 +403,7 @@ _COMMAND_HANDLERS: dict[str, object] = {
     "generate": cmd_generate,
     "build": cmd_build,
     "clean": cmd_clean,
+    "doctor": cmd_doctor,
 }
 
 
