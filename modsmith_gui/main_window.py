@@ -30,12 +30,16 @@ from modsmith_gui.resources import resolve_icon_path
 from modsmith_gui.widgets.log_panel import LogPanel
 from modsmith_gui.screens.dashboard import DashboardScreen
 from modsmith_gui.screens.home import HomeScreen
+from modsmith_gui.screens.templates import TemplatesScreen
+from modsmith_gui.screens.recipes import RecipesScreen
 
 
 # Navigation entries: (display label, screen widget class)
 _NAV_ITEMS = [
     ("Dashboard", DashboardScreen),
     ("Home", HomeScreen),
+    ("Templates", TemplatesScreen),
+    ("Recipes", RecipesScreen),
 ]
 
 
@@ -111,7 +115,7 @@ class MainWindow(QMainWindow):
         home_screen: HomeScreen = self._screen_objects["Home"]  # type: ignore[assignment]
         home_screen.home_changed.connect(self._on_home_changed)
 
-        self._nav.currentRowChanged.connect(self._stack.setCurrentIndex)
+        self._nav.currentRowChanged.connect(self._on_nav_changed)
         self._nav.setCurrentRow(0)
 
         top_layout.addWidget(self._nav)
@@ -142,3 +146,11 @@ class MainWindow(QMainWindow):
         for screen in self._screens:
             if hasattr(screen, "refresh"):
                 screen.refresh()  # type: ignore[union-attr]
+
+    def _on_nav_changed(self, index: int) -> None:
+        """Handle screen changes and call refresh() on the selected screen if available."""
+        self._stack.setCurrentIndex(index)
+        screen = self._screens[index]
+        if hasattr(screen, "refresh"):
+            screen.refresh()
+

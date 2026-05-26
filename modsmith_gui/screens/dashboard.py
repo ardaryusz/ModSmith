@@ -14,6 +14,7 @@ doctor output appears in the shared log area at the bottom.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -80,6 +81,21 @@ class DashboardScreen(QWidget):
 
         root.addWidget(env_group)
 
+        # --- Workbench summary group ---
+        summary_group = QGroupBox("Workbench Summary")
+        summary_form = QFormLayout(summary_group)
+        summary_form.setContentsMargins(10, 8, 10, 8)
+        summary_form.setSpacing(6)
+        summary_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self._lbl_summary_templates = QLabel("—")
+        self._lbl_summary_recipes = QLabel("—")
+
+        summary_form.addRow("Templates:", self._lbl_summary_templates)
+        summary_form.addRow("Recipes:", self._lbl_summary_recipes)
+
+        root.addWidget(summary_group)
+
         # --- DIST JARs group ---
         dist_group = QGroupBox("Latest DIST JARs")
         dist_layout = QVBoxLayout(dist_group)
@@ -143,11 +159,82 @@ class DashboardScreen(QWidget):
         self._lbl_templates.setText(str(tpl))
         self._lbl_mods.setText(str(mods))
 
+        # Recompute Workbench Summary defensively
+        self._refresh_summary(tpl, ws)
+
         self._refresh_dist(ws)
 
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _refresh_summary(self, tpl_dir: Path, workspace_dir: Path) -> None:
+        """Scan and display templates and recipes summaries defensively."""
+        # 1. Templates summary
+        if not tpl_dir.exists():
+            self._lbl_summary_templates.setText("Folder missing")
+            self._lbl_summary_templates.setStyleSheet("color: #b00; font-weight: bold;")
+        else:
+            try:
+                from modsmith.template_listing import list_templates
+                result = list_templates(tpl_dir)
+                t_count = len(result.templates)
+                t_err = len(result.errors)
+                t_warn = len(result.warnings)
+
+                if t_count == 0:
+                    text = "0 templates found (empty folder)"
+                    color = "#b87800"  # amber
+                elif t_err > 0:
+                    text = f"{t_count} templates ({t_err} error(s), {t_warn} warning(s))"
+                    color = "#b00"  # red
+                elif t_warn > 0:
+                    text = f"{t_count} templates ({t_warn} warning(s))"
+                    color = "#b87800"  # amber
+                else:
+                    text = f"{t_count} templates (OK)"
+                    color = "#060"  # green
+
+                self._lbl_summary_templates.setText(text)
+                self._lbl_summary_templates.setStyleSheet(f"color: {color}; font-weight: bold;")
+            except Exception as exc:
+                self._lbl_summary_templates.setText(f"Scan failed: {exc}")
+                self._lbl_summary_templates.setStyleSheet("color: #b00; font-weight: bold;")
+
+        # 2. Recipes summary
+        recipes_dir = workspace_dir / "RECIPES"
+        if not recipes_dir.exists():
+            self._lbl_summary_recipes.setText("Folder missing")
+            self._lbl_summary_recipes.setStyleSheet("color: #b00; font-weight: bold;")
+        else:
+            try:
+                recipe_files = list(recipes_dir.glob("*.json"))
+                r_count = len(recipe_files)
+
+                if r_count == 0:
+                    text = "0 recipes found (empty folder)"
+                    color = "#b87800"
+                else:
+                    r_err = 0
+                    for r_file in recipe_files:
+                        try:
+                            text_data = r_file.read_text(encoding="utf-8")
+                            json.loads(text_data)
+                        except Exception:
+                            r_err += 1
+
+                    if r_err > 0:
+                        text = f"{r_count} recipes ({r_err} invalid JSON file(s))"
+                        color = "#b00"
+                    else:
+                        text = f"{r_count} recipes (OK)"
+                        color = "#060"
+
+                self._lbl_summary_recipes.setText(text)
+                self._lbl_summary_recipes.setStyleSheet(f"color: {color}; font-weight: bold;")
+            except Exception as exc:
+                self._lbl_summary_recipes.setText(f"Scan failed: {exc}")
+                self._lbl_summary_recipes.setStyleSheet("color: #b00; font-weight: bold;")
 
     def _refresh_dist(self, workspace_dir: Path) -> None:
         dist_dir = workspace_dir / "DIST"

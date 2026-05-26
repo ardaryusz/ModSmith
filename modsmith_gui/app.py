@@ -139,7 +139,31 @@ QLineEdit[readOnly="true"] {
     padding: 0px;
     color: #222;
 }
+
+/* Flat neutral table style */
+QTableWidget {
+    background-color: #ffffff;
+    gridline-color: #e5e5e5;
+    border: 1px solid #d0d0d0;
+    color: #222;
+    font-size: 11px;
+    selection-background-color: #3a5a8a;
+    selection-color: #ffffff;
+    outline: none;
+}
+QTableWidget::item {
+    padding: 4px 6px;
+}
+QHeaderView::section {
+    background-color: #e0e0e0;
+    color: #333;
+    padding: 4px;
+    border: 1px solid #ccc;
+    font-weight: bold;
+    font-size: 11px;
+}
 """
+
 
 
 def run_app() -> int:
