@@ -13,6 +13,7 @@ keywords = ["minecraft", "mod", "forge", "fabric", "neoforge", "recipe"]
 
 [project.scripts]
 modsmith = "modsmith.cli:main"
+modsmith-gui = "modsmith_gui.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -20,6 +21,7 @@ include = ["modsmith*"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "Pillow>=10.0.0"]
+gui = ["PySide6>=6.5.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
