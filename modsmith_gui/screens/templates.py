@@ -7,14 +7,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+import re
+import shutil
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QGroupBox, QFormLayout, QTableWidget, QTableWidgetItem,
-    QHeaderView, QLineEdit, QMessageBox,
+    QHeaderView, QLineEdit, QMessageBox, QInputDialog, QFileDialog,
 )
 from PySide6.QtCore import Qt, Slot
 
 from modsmith.template_listing import list_templates, TemplateStatus
+from modsmith.utils import safe_delete_tree
 
 
 def _get_default_dir(subdir: str) -> Path:
@@ -49,6 +52,9 @@ class TemplatesScreen(QWidget):
         self._btn_refresh.setFixedWidth(80)
         self._btn_refresh.clicked.connect(self.refresh)
 
+        self._btn_add_template = QPushButton("Add Template")
+        self._btn_add_template.clicked.connect(self._add_template)
+
         self._btn_open_folder = QPushButton("Open Templates Folder")
         self._btn_open_folder.clicked.connect(self._open_templates_folder)
 
@@ -56,6 +62,7 @@ class TemplatesScreen(QWidget):
         self._lbl_status.setStyleSheet("color: #666; font-size: 11px;")
 
         controls.addWidget(self._btn_refresh)
+        controls.addWidget(self._btn_add_template)
         controls.addWidget(self._btn_open_folder)
         controls.addWidget(self._lbl_status)
         controls.addStretch()
@@ -201,6 +208,106 @@ class TemplatesScreen(QWidget):
         self._lbl_status.setText(
             f"Found {len(result.templates)} templates ({err_cnt} errors, {warn_cnt} warnings)"
         )
+
+    @Slot()
+    def _add_template(self) -> None:
+        """Prompt for folder import details, recursively copy MDK source folder, and refresh."""
+        tpl_dir = _get_default_dir("MODTEMPLATES")
+        if not tpl_dir.exists():
+            QMessageBox.critical(
+                self,
+                "Import Template",
+                "Templates folder does not exist. Please configure Home or create it first."
+            )
+            return
+
+        # 1. Ask for template destination name
+        dest_name, ok = QInputDialog.getText(
+            self,
+            "Add Template",
+            "Template Name (e.g. forge-1.20.1):",
+            QLineEdit.EchoMode.Normal,
+            ""
+        )
+        if not ok or not dest_name.strip():
+            return
+
+        dest_name = dest_name.strip()
+        # Basic filename validation (letters, numbers, dashes, underscores, dots)
+        if not re.match(r"^[A-Za-z0-9_.-]+$", dest_name):
+            QMessageBox.critical(
+                self,
+                "Import Error",
+                "Invalid template folder name. Use alphanumeric characters, dashes, dots, and underscores only."
+            )
+            return
+
+        dest_path = tpl_dir / dest_name
+
+        # 2. Ask user to pick the unpacked source directory
+        source_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Select Unpacked Template / MDK Source Directory"
+        )
+        if not source_dir:
+            return
+
+        source_path = Path(source_dir)
+        if not source_path.is_dir():
+            QMessageBox.critical(self, "Import Error", "Source must be a valid directory.")
+            return
+
+        # 3. Check for existence and prompt for overwrite
+        if dest_path.exists():
+            reply = QMessageBox.question(
+                self,
+                "Template Exists",
+                f"A template folder named '{dest_name}' already exists. Overwrite/replace it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # Confirmed overwrite: safely delete using safe_delete_tree
+            try:
+                safe_delete_tree(dest_path)
+            except Exception as exc:
+                QMessageBox.critical(
+                    self,
+                    "Import Error",
+                    f"Failed to delete existing template directory:\n{exc}"
+                )
+                return
+
+        # 4. Copy recursively
+        try:
+            shutil.copytree(source_path, dest_path)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Import Error",
+                f"Failed to copy template folder:\n{exc}"
+            )
+            return
+
+        # 5. Check descriptor existence and warn only
+        desc_path = dest_path / "modsmith-template.json"
+        if not desc_path.exists():
+            QMessageBox.warning(
+                self,
+                "Import Warning",
+                "Template imported, but modsmith-template.json is missing.\n\n"
+                "Please add a descriptor file manually so ModSmith can recognize it correctly.",
+            )
+
+        QMessageBox.information(
+            self,
+            "Template Imported",
+            f"Successfully imported template '{dest_name}' into MODTEMPLATES."
+        )
+
+        self.refresh()
 
     @Slot()
     def _open_templates_folder(self) -> None:

@@ -90,9 +90,13 @@ class DashboardScreen(QWidget):
 
         self._lbl_summary_templates = QLabel("—")
         self._lbl_summary_recipes = QLabel("—")
+        self._lbl_summary_config = QLabel("—")
+        self._lbl_summary_readme = QLabel("—")
 
         summary_form.addRow("Templates:", self._lbl_summary_templates)
         summary_form.addRow("Recipes:", self._lbl_summary_recipes)
+        summary_form.addRow("modsmith.json:", self._lbl_summary_config)
+        summary_form.addRow("README.md:", self._lbl_summary_readme)
 
         root.addWidget(summary_group)
 
@@ -235,6 +239,31 @@ class DashboardScreen(QWidget):
             except Exception as exc:
                 self._lbl_summary_recipes.setText(f"Scan failed: {exc}")
                 self._lbl_summary_recipes.setStyleSheet("color: #b00; font-weight: bold;")
+
+        # 3. Config (modsmith.json) summary
+        config_path = workspace_dir / "DETAILS" / "modsmith.json"
+        if not config_path.exists():
+            self._lbl_summary_config.setText("Missing modsmith.json")
+            self._lbl_summary_config.setStyleSheet("color: #b00; font-weight: bold;")
+        else:
+            try:
+                from modsmith.config import load_mod_config
+                cfg = load_mod_config(config_path)
+                t_count = len(cfg.targets)
+                self._lbl_summary_config.setText(f"Exists ({t_count} target(s) defined)")
+                self._lbl_summary_config.setStyleSheet("color: #060; font-weight: bold;")
+            except Exception as exc:
+                self._lbl_summary_config.setText(f"Exists (invalid config: {exc})")
+                self._lbl_summary_config.setStyleSheet("color: #b00; font-weight: bold;")
+
+        # 4. README summary
+        readme_path = workspace_dir / "README" / "README.md"
+        if not readme_path.exists():
+            self._lbl_summary_readme.setText("Missing README.md")
+            self._lbl_summary_readme.setStyleSheet("color: #b87800; font-weight: bold;")
+        else:
+            self._lbl_summary_readme.setText("Exists")
+            self._lbl_summary_readme.setStyleSheet("color: #060; font-weight: bold;")
 
     def _refresh_dist(self, workspace_dir: Path) -> None:
         dist_dir = workspace_dir / "DIST"

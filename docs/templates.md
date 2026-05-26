@@ -68,3 +68,13 @@ This scans all template child directories and checks:
 
 If any template is missing its descriptor, has invalid JSON, or lacks `gradle-wrapper.jar`, the command reports the errors and exits with a non-zero status code (`1`). Missing scripts like `gradlew` or `gradlew.bat` generate warnings but do not fail the command (exit `0`).
 
+
+## Importing Templates via GUI
+
+The ModSmith Workbench GUI Templates screen offers a convenient **Add Template** button:
+1. Click **Add Template** at the top of the Templates screen.
+2. Enter a unique folder name (e.g. `forge-1.20.1`) for your destination template directory under `MODTEMPLATES`.
+3. Pick the unpacked source folder representing the downloaded loader MDK/template on your system.
+4. ModSmith will recursively copy the folder as-is.
+5. If the template folder name already exists, the GUI will prompt you for confirmation before deleting the existing template directory safely (using `safe_delete_tree`) and copying the new MDK.
+6. A warning is printed to the status logs if `modsmith-template.json` is missing in the imported template, advising you to add one.
