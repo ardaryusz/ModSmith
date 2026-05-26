@@ -133,3 +133,28 @@ After running `modsmith build`, the compiled binary outputs are retrieved from t
 <mod_id>-<mc_range>-<loader>-<mod_version>.jar
 ```
 For example: `easypeasygunpowder-1.20.1-forge-1.1.0.jar`
+
+---
+
+## Working with the GUI
+
+ModSmith includes a clean, simple, and native desktop GUI for managing your workspace configuration, templates, recipes, and documentation.
+
+### Workspace Config Editor
+Under the **Workspace** tab, you can view and edit your active `modsmith.json` configuration inside standard native fields:
+* Edit your Mod ID, Name, Version, Maven Group, Package, Authors, License, and multiline Description.
+* Real-time input warning validation highlights Mod ID, Package, or Main Class errors in soft red if they violate Java or ModSmith syntax guidelines.
+* Add and configure target compiler environments dynamically. You can choose loader branches (`fabric`, `forge`, `neoforge`) and select from available template blueprints via dropdown selectors.
+* Clicking **Save Config** automatically saves a local backup (`modsmith.json.bak`) of your prior settings before serializing pretty-printed, UTF-8 encoded JSON to disk.
+* Click **Validate Config** to execute backend checks and log validation passes or errors.
+
+### README Editor & Previewer
+The **README** tab provides a convenient environment to edit `WORKSPACE/README/README.md`:
+* Edit raw Markdown inside a monospace plain-text editor.
+* Switch to the **Preview** tab to inspect live compiled HTML formatting (headings, lists, bold/italic, blockquotes) powered by Qt's Markdown engine.
+* Easily save modifications or load changes at any point.
+
+### Template Import
+In the **Templates** tab, you can easily integrate new templates without navigating filesystem directories manually:
+* Click **Add Template**, input the destination folder name (e.g. `fabric-1.21.1`), and select the source directory (such as an unzipped MDK).
+* The tool recursively copies files, prompts for confirmation before safely overwriting any conflicting folder, and logs success details while immediately refreshing lists.

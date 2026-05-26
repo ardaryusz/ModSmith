@@ -1,6 +1,6 @@
 # Configuration (`modsmith.json`)
 
-ModSmith reads your mod definition and compilation targets from `WORKSPACE/DETAILS/modsmith.json`.
+ModSmith reads your mod definition and compilation targets from `WORKSPACE/DETAILS/modsmith.json`. You can manage this file directly as a text file, or use the interactive **Workspace Config Editor** in the ModSmith desktop GUI to edit fields with real-time validation warnings and templates dropdown selection.
 
 ## Full Schema Fields
 

@@ -62,18 +62,20 @@ QStackedWidget {
 QGroupBox {
     font-weight: bold;
     font-size: 12px;
-    border: 1px solid #c0c0c0;
+    color: #111111;
+    border: 1px solid #c8c8c8;
     border-radius: 4px;
-    margin-top: 8px;
-    padding-top: 4px;
+    margin-top: 12px;
+    padding-top: 10px;
     background-color: #ffffff;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    padding: 0 6px;
-    left: 8px;
-    color: #444;
+    left: 10px;
+    padding: 0 4px;
+    background-color: #ffffff;
+    color: #111111;
 }
 
 /* Form labels */
@@ -122,22 +124,42 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0px;
 }
 
-/* Flat clean styling for selectable QLineEdit inputs */
-QLineEdit {
+/* Flat clean styling for editable inputs */
+QLineEdit, QPlainTextEdit, QTextEdit {
     background-color: #ffffff;
     border: 1px solid #c0c0c0;
     border-radius: 2px;
     padding: 2px 4px;
-    color: #222;
+    color: #111111;
+    selection-background-color: #3a5a8a;
+    selection-color: #ffffff;
 }
-QLineEdit:focus {
+QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus {
     border-color: #3a5a8a;
 }
-QLineEdit[readOnly="true"] {
+QLineEdit[readOnly="true"], QPlainTextEdit[readOnly="true"], QTextEdit[readOnly="true"] {
     background-color: transparent;
     border: none;
     padding: 0px;
-    color: #222;
+    color: #111111;
+}
+
+/* Combo boxes */
+QComboBox {
+    background-color: #ffffff;
+    border: 1px solid #c0c0c0;
+    border-radius: 2px;
+    padding: 2px 6px;
+    color: #111111;
+    selection-background-color: #3a5a8a;
+    selection-color: #ffffff;
+}
+QComboBox QAbstractItemView {
+    background-color: #ffffff;
+    color: #111111;
+    selection-background-color: #3a5a8a;
+    selection-color: #ffffff;
+    border: 1px solid #c0c0c0;
 }
 
 /* Flat neutral table style */
@@ -145,14 +167,20 @@ QTableWidget {
     background-color: #ffffff;
     gridline-color: #e5e5e5;
     border: 1px solid #d0d0d0;
-    color: #222;
+    color: #111111;
     font-size: 11px;
     selection-background-color: #3a5a8a;
     selection-color: #ffffff;
     outline: none;
 }
 QTableWidget::item {
+    color: #111111;
+    background-color: #ffffff;
     padding: 4px 6px;
+}
+QTableWidget::item:selected {
+    background-color: #3a5a8a;
+    color: #ffffff;
 }
 QHeaderView::section {
     background-color: #e0e0e0;
