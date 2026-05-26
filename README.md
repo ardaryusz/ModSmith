@@ -1,4 +1,4 @@
-<div align="center"> <img src="assets/image.png"> </div>
+<div align="center"> <img src="assets/title.png"> </div>
 
 <div align="center"> <p> <b>ModSmith</b> is a local automation tool for generating simple recipe-only Minecraft mods across Fabric, Forge, and NeoForge using unpacked templates.<p> </div>
 
