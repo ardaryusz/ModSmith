@@ -51,7 +51,6 @@ class StatusBadge(QWidget):
 
         layout.addWidget(self._dot)
         layout.addWidget(self._text)
-        layout.addStretch()
 
         self.set_neutral("")
 

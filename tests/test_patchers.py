@@ -318,5 +318,104 @@ class TestFabricPatcher(unittest.TestCase):
         self.assertEqual(data["contact"]["issues"], "http://issues.com")
 
 
+class TestTargetContextVersionLabel(unittest.TestCase):
+    """Tests for TargetContext.mc_version_label and archive_base_name."""
+
+    def _make_ctx(self, mc_range: str, minecraft_version: str = "",
+                  minecraft_version_range: str = "") -> TargetContext:
+        config = ModConfig(
+            mod_id="gunpowdermod",
+            mod_name="Gunpowder Mod",
+            mod_version="1.0.1",
+            group="com.example",
+            package="com.example",
+            authors="Dev",
+            license="MIT",
+            description="Desc",
+            output_repo_name="gunpowdermod",
+            targets=[],
+            main_class="GunpowderMod",
+        )
+        mod_ctx = ModContext(config=config)
+        target = TargetConfig(
+            loader="forge",
+            template="forge_template",
+            branch="main",
+            mc_range=mc_range,
+            minecraft_version=minecraft_version,
+            minecraft_version_range=minecraft_version_range,
+        )
+        return TargetContext(mod_ctx=mod_ctx, target=target, descriptor=None)
+
+    def test_exact_single_version(self):
+        """Exact minecraft_version, no range → use minecraft_version verbatim."""
+        ctx = self._make_ctx(
+            mc_range="1.20",
+            minecraft_version="1.20.1",
+            minecraft_version_range="[1.20.1,1.20.1]",
+        )
+        self.assertEqual(ctx.mc_version_label, "1.20.1")
+
+    def test_exact_version_no_range_field(self):
+        """minecraft_version set, no minecraft_version_range → use minecraft_version."""
+        ctx = self._make_ctx(
+            mc_range="1.20",
+            minecraft_version="1.20.1",
+            minecraft_version_range="",
+        )
+        self.assertEqual(ctx.mc_version_label, "1.20.1")
+
+    def test_inclusive_custom_range(self):
+        """[from,through] inclusive range → 'from-through'."""
+        ctx = self._make_ctx(
+            mc_range="1.21",
+            minecraft_version="1.21.2",
+            minecraft_version_range="[1.21.2,1.21.11]",
+        )
+        self.assertEqual(ctx.mc_version_label, "1.21.2-1.21.11")
+
+    def test_exclusive_range_falls_back_to_minecraft_version(self):
+        """Maven half-open range like [1.20,1.21) → not inclusive, use minecraft_version."""
+        ctx = self._make_ctx(
+            mc_range="1.20",
+            minecraft_version="1.20.4",
+            minecraft_version_range="[1.20,1.21)",
+        )
+        # Does not end with ']', so falls back to minecraft_version
+        self.assertEqual(ctx.mc_version_label, "1.20.4")
+
+    def test_fallback_to_mc_range_when_no_minecraft_version(self):
+        """No minecraft_version set → fall back to mc_range."""
+        ctx = self._make_ctx(mc_range="1.21", minecraft_version="")
+        self.assertEqual(ctx.mc_version_label, "1.21")
+
+    def test_archive_base_name_uses_version_label(self):
+        """archive_base_name must include the full version label, not truncated mc_range."""
+        ctx = self._make_ctx(
+            mc_range="1.20",
+            minecraft_version="1.20.1",
+            minecraft_version_range="",
+        )
+        self.assertEqual(ctx.archive_base_name, "gunpowdermod-1.20.1-forge")
+
+    def test_expected_jar_name(self):
+        """expected_jar_name combines archive_base_name with mod_version."""
+        ctx = self._make_ctx(
+            mc_range="1.20",
+            minecraft_version="1.20.1",
+            minecraft_version_range="",
+        )
+        self.assertEqual(ctx.expected_jar_name, "gunpowdermod-1.20.1-forge-1.0.1.jar")
+
+    def test_range_archive_base_name(self):
+        """Inclusive range produces 'from-through' segment in archive_base_name."""
+        ctx = self._make_ctx(
+            mc_range="1.21",
+            minecraft_version="1.21.2",
+            minecraft_version_range="[1.21.2,1.21.11]",
+        )
+        self.assertEqual(ctx.archive_base_name, "gunpowdermod-1.21.2-1.21.11-forge")
+
+
 if __name__ == "__main__":
     unittest.main()

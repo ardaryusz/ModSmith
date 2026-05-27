@@ -41,7 +41,7 @@ class NeoForgePatcher(BasePatcher):
         # 2. Patch build.gradle
         build_gradle = repo_root / "build.gradle"
         if build_gradle.exists():
-            archive_name = f"{ctx.mod_ctx.mod_id}-{ctx.target.mc_range}-neoforge"
+            archive_name = f"{ctx.mod_ctx.mod_id}-{ctx.mc_version_label}-neoforge"
             self.patch_build_gradle_archive_name(build_gradle, archive_name)
 
         # 3. Patch neoforge.mods.toml

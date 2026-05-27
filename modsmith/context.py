@@ -166,9 +166,39 @@ class TargetContext:
     # ------------------------------------------------------------------
 
     @property
+    def mc_version_label(self) -> str:
+        """Human-readable Minecraft version label for use in JAR filenames.
+
+        Rules:
+        - For a single-version target (exact patch or same minor range), use
+          ``minecraft_version`` verbatim (e.g. ``"1.20.1"``).
+        - For an inclusive custom range ``[from,through]``, use ``"from-through"``
+          (e.g. ``"1.21.2-1.21.11"``).
+        - Never use ``mc_range`` (which drops the patch number) and never emit
+          raw Maven interval syntax like ``[1.20.1,1.20.2)``.
+        """
+        vrange = (self.target.minecraft_version_range or "").strip()
+        mc_ver = (self.target.minecraft_version or "").strip()
+
+        if vrange:
+            # Detect inclusive custom range: must start with '[' and end with ']'
+            if vrange.startswith("[") and vrange.endswith("]"):
+                inner = vrange[1:-1]  # strip surrounding brackets
+                parts = inner.split(",", 1)
+                if len(parts) == 2:
+                    from_ver = parts[0].strip()
+                    through_ver = parts[1].strip()
+                    if from_ver and through_ver and from_ver != through_ver:
+                        return f"{from_ver}-{through_ver}"
+
+        # Default: use the exact minecraft_version (e.g. "1.20.1")
+        return mc_ver if mc_ver else self.target.mc_range
+
+    @property
     def archive_base_name(self) -> str:
-        """Gradle ``archivesName`` value: ``<mod_id>-<mc_range>-<loader>``."""
-        return f"{self.mod_ctx.mod_id}-{self.target.mc_range}-{self.target.loader}"
+        """Gradle ``archivesName`` value: ``<mod_id>-<mc_version_label>-<loader>``."""
+        suffix = self.descriptor.jar_loader_suffix if self.descriptor and self.descriptor.jar_loader_suffix else self.target.loader
+        return f"{self.mod_ctx.mod_id}-{self.mc_version_label}-{suffix}"
 
     @property
     def expected_jar_name(self) -> str:
