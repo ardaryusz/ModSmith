@@ -15,7 +15,7 @@ All blueprints must be placed within the `MODTEMPLATES/` directory.
 
 ## Template Descriptor (`modsmith-template.json`)
 
-To describe how ModSmith should parse and compile a template, you can place a descriptor file named `modsmith-template.json` at the root of your template folder.
+To describe how ModSmith should parse and compile a template, you must place a descriptor file named `modsmith-template.json` at the root of your template folder.
 
 ### Full Example Descriptor
 
@@ -38,23 +38,32 @@ Below is an example of a template descriptor for a Forge 1.20.1 template:
 
 ### Descriptor Fields
 
-* **`loader`** (string): The loader type. Either `fabric`, `forge`, or `neoforge`.
-* **`minecraft_version`** (string): The target Minecraft version range or specific version (e.g., `1.20.1`).
-* **`recipe_folder`** (string): The resource path suffix where recipe JSON files are located. Usually `recipes` (for 1.20) or `recipe` (for 1.21+).
-* **`recipe_format`** (string): The format ModSmith should output for this template. Must be either `legacy_1_20` or `modern_1_21`.
-* **`metadata_files`** (array of strings): Relatives paths to configuration files (e.g., `fabric.mod.json`, `mods.toml`) where ModSmith needs to parse and insert mod details during generation.
-* **`java_mod_import`** (string): The main Java decorator/annotation/class import representing the entry point of the loader (e.g., `net.minecraftforge.fml.common.Mod`).
-* **`uses_generated_metadata`** (boolean): Set to `true` if the template uses a metadata generation plugin rather than standard metadata config files.
-* **`jar_loader_suffix`** (string): Suffix added to the compiled JAR.
+* **`loader`** *(required)* (string): The loader type. One of `fabric`, `forge`, or `neoforge`.
+* **`minecraft_version`** *(required)* (string): The target Minecraft version for this template (e.g., `1.20.1`, `1.21.4`).
+* **`recipe_folder`** *(required)* (string): The resource path suffix where recipe JSON files are located. Use `recipes` for 1.20.x-style templates, or `recipe` for 1.21+ templates.
+* **`recipe_format`** *(required)* (string): The format ModSmith should output for this template.
+  * `legacy_1_20` — for 1.20.x Forge/Fabric/NeoForge templates (older recipe path conventions).
+  * `modern_1_21` — for 1.21+ templates (new consolidated recipe path).
+* **`jar_loader_suffix`** *(required)* (string): Suffix added to the compiled JAR filename (e.g. `forge`, `fabric`, `neoforge`).
+* **`metadata_files`** *(optional)* (array of strings): Relative paths to configuration files (e.g., `fabric.mod.json`, `mods.toml`) where ModSmith inserts mod metadata during generation.
+* **`java_mod_import`** *(optional)* (string): The main Java decorator/annotation/class import for the loader's entry point (e.g., `net.minecraftforge.fml.common.Mod`).
+* **`uses_generated_metadata`** *(optional)* (boolean): Set to `true` if the template uses a metadata generation plugin rather than static metadata config files.
+
+### Recipe Format Guidance
+
+| Minecraft Version | Recommended `recipe_format` | Recommended `recipe_folder` |
+|---|---|---|
+| 1.20.x (e.g. 1.20.1, 1.20.4) | `legacy_1_20` | `recipes` |
+| 1.21+ (e.g. 1.21.1, 1.21.4) | `modern_1_21` | `recipe` |
 
 > [!NOTE]
-> If a template lacks a `modsmith-template.json` descriptor, ModSmith will display a warning during the `validate` step. It will then apply robust heuristics based on the presence of common files (like `fabric.mod.json` or `mods.toml`) to determine settings automatically.
+> If a template lacks a `modsmith-template.json` descriptor, ModSmith will display an error during the `validate` step and mark the template as **ERROR** in the GUI. The GUI can create the descriptor for you automatically — see below.
 
 ---
 
 ## Template Listing & Verification
 
-You can list all available templates under `MODTEMPLATES/` and verify their configurations and build wrapper files using the `modsmith template list` command:
+You can list all available templates under `MODTEMPLATES/` and verify their configurations using the `modsmith template list` command:
 
 ```bash
 modsmith template list
@@ -77,4 +86,39 @@ The ModSmith Workbench GUI Templates screen offers a convenient **Add Template**
 3. Pick the unpacked source folder representing the downloaded loader MDK/template on your system.
 4. ModSmith will recursively copy the folder as-is.
 5. If the template folder name already exists, the GUI will prompt you for confirmation before deleting the existing template directory safely (using `safe_delete_tree`) and copying the new MDK.
-6. A warning is printed to the status logs if `modsmith-template.json` is missing in the imported template, advising you to add one.
+6. **If `modsmith-template.json` is missing** in the imported template, the GUI asks: *"Create it now?"*  — clicking **Yes** opens the descriptor form pre-filled with inferred values.
+
+---
+
+## Creating and Editing the Descriptor via GUI
+
+The Templates screen has two dedicated buttons for managing `modsmith-template.json`:
+
+### Create Descriptor / Edit Descriptor
+
+1. Select a template row in the table.
+2. Click **Create Descriptor** (if the file is missing) or **Edit Descriptor** (if it already exists).
+3. A form dialog opens with the following fields:
+
+   | Field | Description |
+   |---|---|
+   | Loader | `forge`, `fabric`, or `neoforge` |
+   | Minecraft Version | e.g. `1.20.1`, `1.21.4` |
+   | Recipe Format | `legacy_1_20` or `modern_1_21` |
+   | Recipe Folder | Usually `recipes` |
+   | JAR Loader Suffix | Suffix in the built JAR filename (usually matches loader) |
+
+4. When **creating**, the form infers defaults from the folder name:
+   - `forge-1.20.1` → Loader: forge, Version: 1.20.1, Format: legacy\_1\_20, Suffix: forge
+   - `fabric-1.21.1` → Loader: fabric, Version: 1.21.1, Format: modern\_1\_21, Suffix: fabric
+   - `neoforge-1.21.1` → Loader: neoforge, Version: 1.21.1, Format: modern\_1\_21, Suffix: neoforge
+
+5. When **editing**, the form is pre-populated with all current values. Advanced fields (`metadata_files`, `java_mod_import`, `uses_generated_metadata`) are preserved as-is.
+
+6. Click **Save** to write `modsmith-template.json` with UTF-8 encoding and `indent=2`.
+
+7. After saving, the Templates table refreshes automatically. A previously **ERROR** row should become **WARNING** or **OK**.
+
+### Open Descriptor JSON
+
+Select a template row and click **Open Descriptor JSON** to open `modsmith-template.json` in your system default editor. If the file does not exist yet, a warning is shown instead.
