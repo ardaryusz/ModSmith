@@ -95,10 +95,9 @@ def test_workspace_save(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     # Edit fields dynamically
     screen._txt_mod_id.setText("testmod")
     screen._txt_mod_name.setText("Test Mod")
-    screen._txt_package.setText("com.example.testmod")
+    screen._txt_group.setText("com.example.testmod")
     screen._txt_description.setPlainText("Test Description")
     screen._txt_authors.setText("Test Author")
-    screen._txt_output_repo_name.setText("TestMod")
 
     # Trigger Save
     screen._save_config()

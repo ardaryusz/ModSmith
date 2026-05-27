@@ -34,6 +34,7 @@ from modsmith_gui.screens.templates import TemplatesScreen
 from modsmith_gui.screens.recipes import RecipesScreen
 from modsmith_gui.screens.workspace import WorkspaceScreen
 from modsmith_gui.screens.readme import ReadmeScreen
+from modsmith_gui.screens.generate_build import GenerateBuildScreen
 
 
 # Navigation entries: (display label, screen widget class)
@@ -44,6 +45,7 @@ _NAV_ITEMS = [
     ("Recipes", RecipesScreen),
     ("Workspace", WorkspaceScreen),
     ("README", ReadmeScreen),
+    ("Generate & Build", GenerateBuildScreen),
 ]
 
 
@@ -110,6 +112,8 @@ class MainWindow(QMainWindow):
                 screen = DashboardScreen(log_panel=self._log_panel)
             elif ScreenClass is WorkspaceScreen:
                 screen = WorkspaceScreen(log_panel=self._log_panel)
+            elif ScreenClass is GenerateBuildScreen:
+                screen = GenerateBuildScreen(log_panel=self._log_panel)
             else:
                 screen = ScreenClass()
 
