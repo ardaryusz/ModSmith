@@ -402,28 +402,98 @@ class TestDuplicateBranches(unittest.TestCase):
         )
 
 
-class TestDuplicateLoaderMcRange(unittest.TestCase):
-    """Duplicate (loader, mc_range) pairs are warnings, not errors."""
+class TestDuplicateTargets(unittest.TestCase):
+    """Test duplicate target validations."""
 
-    def _build_config_with_duplicate_loader_range(self) -> dict[str, Any]:
+    def test_same_loader_and_mc_family_but_different_versions_does_not_warn(self):
+        """forge-1.21.1 and forge-1.21.11 under family 1.21 do not warn if everything else is unique."""
         cfg = json.loads(json.dumps(_VALID_CONFIG))
-        # Give targets[1] the same loader+mc_range as targets[0] but different branch
-        cfg["targets"][1]["loader"] = cfg["targets"][0]["loader"]
-        cfg["targets"][1]["mc_range"] = cfg["targets"][0]["mc_range"]
-        cfg["targets"][1]["branch"] = "unique-branch-name"
-        return cfg
-
-    def test_duplicate_loader_mc_range_is_warning_not_error(self):
+        cfg["targets"] = [
+            {
+                "loader": "forge",
+                "template": "forge-1.21.1",
+                "branch": "forge-1.21.1",
+                "mc_range": "1.21",
+                "minecraft_version": "1.21.1",
+            },
+            {
+                "loader": "forge",
+                "template": "forge-1.21.11",
+                "branch": "forge-1.21.11",
+                "mc_range": "1.21",
+                "minecraft_version": "1.21.11",
+            }
+        ]
         with _WorkspaceFactory() as ws:
-            ws.write_config(self._build_config_with_duplicate_loader_range())
+            ws.write_config(cfg)
             ws.write_recipe()
-            for t in _VALID_CONFIG["targets"]:
-                ws.add_template(t["template"])
+            ws.add_template("forge-1.21.1")
+            ws.add_template("forge-1.21.11")
+            with patch("shutil.which", return_value="/usr/bin/mock"):
+                result = ws.validate()
+        self.assertTrue(result.ok, f"Unexpected errors: {result.errors}")
+        self.assertEqual(result.warnings, [], f"Expected no warnings, but got: {result.warnings}")
+
+    def test_duplicate_loader_and_minecraft_version_warns(self):
+        """Same loader and same minecraft_version triggers a warning."""
+        cfg = json.loads(json.dumps(_VALID_CONFIG))
+        cfg["targets"] = [
+            {
+                "loader": "forge",
+                "template": "forge-1.21.1",
+                "branch": "forge-1.21.1",
+                "mc_range": "1.21",
+                "minecraft_version": "1.21.1",
+            },
+            {
+                "loader": "forge",
+                "template": "forge-1.21.1-alt",
+                "branch": "forge-1.21.1-alt",
+                "mc_range": "1.21",
+                "minecraft_version": "1.21.1",
+            }
+        ]
+        with _WorkspaceFactory() as ws:
+            ws.write_config(cfg)
+            ws.write_recipe()
+            ws.add_template("forge-1.21.1")
+            ws.add_template("forge-1.21.1-alt")
             with patch("shutil.which", return_value="/usr/bin/mock"):
                 result = ws.validate()
         self.assertTrue(result.ok, f"Unexpected errors: {result.errors}")
         self.assertTrue(
-            any("loader" in w.lower() or "mc_range" in w.lower() for w in result.warnings),
+            any("loader+minecraft_version" in w or "1.21.1" in w for w in result.warnings),
+            result.warnings,
+        )
+
+    def test_duplicate_loader_and_template_warns(self):
+        """Same loader and same template triggers a warning."""
+        cfg = json.loads(json.dumps(_VALID_CONFIG))
+        cfg["targets"] = [
+            {
+                "loader": "forge",
+                "template": "forge-1.21.1",
+                "branch": "forge-1.21.1",
+                "mc_range": "1.21",
+                "minecraft_version": "1.21.1",
+            },
+            {
+                "loader": "forge",
+                "template": "forge-1.21.1",
+                "branch": "forge-1.21.1-alt",
+                "mc_range": "1.21",
+                "minecraft_version": "1.21.2",
+            }
+        ]
+        with _WorkspaceFactory() as ws:
+            ws.write_config(cfg)
+            ws.write_recipe()
+            ws.add_template("forge-1.21.1")
+            with patch("shutil.which", return_value="/usr/bin/mock"):
+                result = ws.validate()
+        self.assertTrue(result.ok, f"Unexpected errors: {result.errors}")
+        self.assertTrue(
+            any("loader+template" in w or "forge-1.21.1" in w for w in result.warnings),
             result.warnings,
         )
 

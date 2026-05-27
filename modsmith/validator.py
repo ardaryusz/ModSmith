@@ -125,18 +125,31 @@ def validate_workspace(
             else:
                 seen_branches[t.branch] = i
 
-        # Check 20 — duplicate (loader, mc_range) pairs → warnings only
-        seen_loader_range: dict[tuple[str, str], int] = {}
+        # Check 20 — duplicate (loader, minecraft_version) pairs → warnings only
+        seen_loader_version: dict[tuple[str, str], int] = {}
         for i, t in enumerate(config.targets):
-            key = (t.loader, t.mc_range)
-            if key in seen_loader_range:
+            key = (t.loader, t.minecraft_version)
+            if key in seen_loader_version:
                 result.add_warning(
-                    f"targets[{i}] has the same loader+mc_range "
-                    f"('{t.loader}', '{t.mc_range}') as "
-                    f"targets[{seen_loader_range[key]}]."
+                    f"targets[{i}] has the same loader+minecraft_version "
+                    f"('{t.loader}', '{t.minecraft_version}') as "
+                    f"targets[{seen_loader_version[key]}]."
                 )
             else:
-                seen_loader_range[key] = i
+                seen_loader_version[key] = i
+
+        # Check 21 — duplicate (loader, template) pairs → warnings only
+        seen_loader_template: dict[tuple[str, str], int] = {}
+        for i, t in enumerate(config.targets):
+            key = (t.loader, t.template)
+            if key in seen_loader_template:
+                result.add_warning(
+                    f"targets[{i}] has the same loader+template "
+                    f"('{t.loader}', '{t.template}') as "
+                    f"targets[{seen_loader_template[key]}]."
+                )
+            else:
+                seen_loader_template[key] = i
 
         # Check 9 & 10 — template folders exist; descriptor warning if absent
         for i, t in enumerate(config.targets):
