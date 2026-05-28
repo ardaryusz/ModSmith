@@ -1,4 +1,13 @@
-"""Templates screen — view and validate all templates in MODTEMPLATES."""
+"""Templates screen — view, validate, and edit template descriptors.
+
+Provides:
+  - Tabular listing of all template folders under MODTEMPLATES.
+  - Detail panel for the selected template row.
+  - Buttons: Refresh, Add Template, Open Templates Folder,
+             Create/Edit Descriptor, Open Descriptor JSON.
+  - Descriptor dialog integration for creating or editing modsmith-template.json.
+  - Post-import prompt: offer to create descriptor if it was missing.
+"""
 
 from __future__ import annotations
 
@@ -13,11 +22,13 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QGroupBox, QFormLayout, QTableWidget, QTableWidgetItem,
     QHeaderView, QLineEdit, QMessageBox, QInputDialog, QFileDialog,
+    QDialog,
 )
 from PySide6.QtCore import Qt, Slot
 
 from modsmith.template_listing import list_templates, TemplateStatus
 from modsmith.utils import safe_delete_tree
+from modsmith_gui.dialogs.template_descriptor_dialog import TemplateDescriptorDialog
 
 
 def _get_default_dir(subdir: str) -> Path:
@@ -69,6 +80,30 @@ class TemplatesScreen(QWidget):
 
         root.addLayout(controls)
 
+        # --- Second button row: descriptor actions ---
+        desc_controls = QHBoxLayout()
+        desc_controls.setSpacing(8)
+
+        self._btn_descriptor = QPushButton("Create Descriptor")
+        self._btn_descriptor.setMinimumWidth(150)
+        self._btn_descriptor.setToolTip(
+            "Create or edit the modsmith-template.json descriptor for the selected template."
+        )
+        self._btn_descriptor.clicked.connect(self._on_descriptor)
+
+        self._btn_open_descriptor_json = QPushButton("Open Descriptor JSON")
+        self._btn_open_descriptor_json.setMinimumWidth(155)
+        self._btn_open_descriptor_json.setToolTip(
+            "Open the modsmith-template.json file in the system default editor."
+        )
+        self._btn_open_descriptor_json.clicked.connect(self._on_open_descriptor_json)
+
+        desc_controls.addWidget(self._btn_descriptor)
+        desc_controls.addWidget(self._btn_open_descriptor_json)
+        desc_controls.addStretch()
+
+        root.addLayout(desc_controls)
+
         # --- Empty state warning label ---
         self._lbl_empty_state = QLabel("")
         self._lbl_empty_state.setWordWrap(True)
@@ -90,8 +125,8 @@ class TemplatesScreen(QWidget):
         root.addWidget(self._table, stretch=1)
 
         # --- Detail group at the bottom ---
-        detail_group = QGroupBox("Selected Template Details")
-        detail_form = QFormLayout(detail_group)
+        self._detail_group = QGroupBox("Selected Template Details")
+        detail_form = QFormLayout(self._detail_group)
         detail_form.setContentsMargins(10, 8, 10, 8)
         detail_form.setSpacing(6)
         detail_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
@@ -99,33 +134,50 @@ class TemplatesScreen(QWidget):
         self._txt_detail_path = QLineEdit()
         self._txt_detail_path.setReadOnly(True)
 
+        self._txt_detail_descriptor_path = QLineEdit()
+        self._txt_detail_descriptor_path.setReadOnly(True)
+
         self._lbl_detail_error = QLabel("Select a template row to view details.")
         self._lbl_detail_error.setWordWrap(True)
         self._lbl_detail_error.setStyleSheet("color: #666; font-size: 11px;")
 
-        detail_form.addRow("Absolute path:", self._txt_detail_path)
+        detail_form.addRow("Template path:", self._txt_detail_path)
+        detail_form.addRow("Descriptor path:", self._txt_detail_descriptor_path)
         detail_form.addRow("Status details:", self._lbl_detail_error)
 
-        root.addWidget(detail_group)
+        root.addWidget(self._detail_group)
+
+        # Set initial disabled states
+        self._btn_descriptor.setEnabled(False)
+        self._btn_open_descriptor_json.setEnabled(False)
+        self._detail_group.setEnabled(False)
 
         # First refresh
         self.refresh()
+
+    # ------------------------------------------------------------------
+    # Refresh
+    # ------------------------------------------------------------------
 
     def refresh(self) -> None:
         """Scan templates on disk and rebuild the table."""
         tpl_dir = _get_default_dir("MODTEMPLATES")
         self._table.clearSelection()
         self._txt_detail_path.setText("")
+        self._txt_detail_descriptor_path.setText("")
         self._lbl_detail_error.setText("Select a template row to view details.")
         self._lbl_detail_error.setStyleSheet("color: #666; font-size: 11px;")
+        self._btn_descriptor.setText("Create Descriptor")
 
         # Handle folder missing defensively
         if not tpl_dir.exists():
             self._current_templates = []
             self._table.hide()
+            self._detail_group.hide()
+            self._btn_descriptor.hide()
+            self._btn_open_descriptor_json.hide()
             self._lbl_empty_state.setText(
-                f"Templates folder does not exist:\n{tpl_dir}\n\n"
-                "Please configure MODSMITH_HOME or create this folder inside your active workspace."
+                f"Templates folder does not exist:\n{tpl_dir}"
             )
             self._lbl_empty_state.setStyleSheet(
                 "background-color: #fce8e6; color: #a94442; border: 1px solid #ebccd1; "
@@ -141,9 +193,12 @@ class TemplatesScreen(QWidget):
 
         if not result.templates:
             self._table.hide()
+            self._detail_group.hide()
+            self._btn_descriptor.hide()
+            self._btn_open_descriptor_json.hide()
             self._lbl_empty_state.setText(
                 f"No templates found in:\n{tpl_dir}\n\n"
-                "To create a new template, make a directory in MODTEMPLATES containing a 'modsmith-template.json' descriptor."
+                "Use Add Template to import a template folder."
             )
             self._lbl_empty_state.setStyleSheet(
                 "background-color: #ffe8d6; color: #b87800; border: 1px solid #ffd0a8; "
@@ -153,9 +208,14 @@ class TemplatesScreen(QWidget):
             self._lbl_status.setText("Warning: Empty templates folder")
             return
 
-        # Templates found: show table and hide warning
+        # Templates found: show table, show controls and hide warning
         self._lbl_empty_state.hide()
         self._table.show()
+        self._detail_group.show()
+        self._btn_descriptor.show()
+        self._btn_open_descriptor_json.show()
+        # Reset selection to ensure selection changed handler runs and sets initial disabled state
+        self._on_selection_changed()
 
         # Build table structure
         self._table.setRowCount(0)
@@ -167,27 +227,23 @@ class TemplatesScreen(QWidget):
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(True)
-        # Make the Name column stretchable
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
 
         for row_idx, status in enumerate(result.templates):
             self._table.insertRow(row_idx)
 
-            # Columns: Name, Loader, MC Version, Recipe Format, Recipe Folder, Wrapper, Status
             self._table.setItem(row_idx, 0, QTableWidgetItem(status.name))
             self._table.setItem(row_idx, 1, QTableWidgetItem(status.loader or "—"))
             self._table.setItem(row_idx, 2, QTableWidgetItem(status.minecraft_version or "—"))
             self._table.setItem(row_idx, 3, QTableWidgetItem(status.recipe_format or "—"))
             self._table.setItem(row_idx, 4, QTableWidgetItem(status.recipe_folder or "—"))
 
-            # Wrapper jar status
             wrap_str = "gradle-wrapper.jar" if status.has_gradle_wrapper_jar else "Missing wrapper"
             wrap_item = QTableWidgetItem(wrap_str)
             if not status.has_gradle_wrapper_jar:
                 wrap_item.setForeground(Qt.GlobalColor.red)
             self._table.setItem(row_idx, 5, wrap_item)
 
-            # Combined Status
             if not status.has_descriptor or not status.descriptor_valid or not status.has_gradle_wrapper_jar:
                 status_str = "ERROR"
                 status_item = QTableWidgetItem(status_str)
@@ -209,17 +265,94 @@ class TemplatesScreen(QWidget):
             f"Found {len(result.templates)} templates ({err_cnt} errors, {warn_cnt} warnings)"
         )
 
+    # ------------------------------------------------------------------
+    # Descriptor actions
+    # ------------------------------------------------------------------
+
+    def _selected_template(self) -> TemplateStatus | None:
+        """Return the currently selected TemplateStatus, or None if none selected."""
+        selected_rows = self._table.selectionModel().selectedRows()
+        if not selected_rows:
+            return None
+        row = selected_rows[0].row()
+        if row < len(self._current_templates):
+            return self._current_templates[row]
+        return None
+
     @Slot()
-    def _add_template(self) -> None:
-        """Prompt for folder import details, recursively copy MDK source folder, and refresh."""
-        tpl_dir = _get_default_dir("MODTEMPLATES")
-        if not tpl_dir.exists():
-            QMessageBox.critical(
+    def _on_descriptor(self) -> None:
+        """Open the descriptor dialog for the selected template."""
+        status = self._selected_template()
+        if status is None:
+            QMessageBox.warning(
                 self,
-                "Import Template",
-                "Templates folder does not exist. Please configure Home or create it first."
+                "No Template Selected",
+                "Please select a template row first.",
             )
             return
+
+        self._open_descriptor_dialog(status.path)
+
+    def _open_descriptor_dialog(self, template_path: Path) -> None:
+        """Open the TemplateDescriptorDialog for *template_path* and refresh on accept."""
+        dialog = TemplateDescriptorDialog(template_path=template_path, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.refresh()
+
+    @Slot()
+    def _on_open_descriptor_json(self) -> None:
+        """Open the selected template's descriptor JSON in the system default editor."""
+        status = self._selected_template()
+        if status is None:
+            QMessageBox.warning(
+                self,
+                "No Template Selected",
+                "Please select a template row first.",
+            )
+            return
+
+        descriptor_path = status.path / "modsmith-template.json"
+        if not descriptor_path.exists():
+            QMessageBox.warning(
+                self,
+                "Descriptor Not Found",
+                "Descriptor does not exist yet.\n\n"
+                "Click \"Create Descriptor\" to create it.",
+            )
+            return
+
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(descriptor_path))  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(descriptor_path)])
+            else:
+                subprocess.Popen(["xdg-open", str(descriptor_path)])
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Open Error",
+                f"Could not open descriptor file:\n{exc}",
+            )
+
+    # ------------------------------------------------------------------
+    # Add Template
+    # ------------------------------------------------------------------
+
+    @Slot()
+    def _add_template(self) -> None:
+        """Prompt for folder import details, copy MDK source folder, and refresh."""
+        tpl_dir = _get_default_dir("MODTEMPLATES")
+        if not tpl_dir.exists():
+            try:
+                tpl_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as exc:
+                QMessageBox.critical(
+                    self,
+                    "Import Template",
+                    f"Templates folder does not exist and could not be created:\n{exc}"
+                )
+                return
 
         # 1. Ask for template destination name
         dest_name, ok = QInputDialog.getText(
@@ -233,7 +366,6 @@ class TemplatesScreen(QWidget):
             return
 
         dest_name = dest_name.strip()
-        # Basic filename validation (letters, numbers, dashes, underscores, dots)
         if not re.match(r"^[A-Za-z0-9_.-]+$", dest_name):
             QMessageBox.critical(
                 self,
@@ -269,7 +401,6 @@ class TemplatesScreen(QWidget):
             if reply != QMessageBox.StandardButton.Yes:
                 return
 
-            # Confirmed overwrite: safely delete using safe_delete_tree
             try:
                 safe_delete_tree(dest_path)
             except Exception as exc:
@@ -291,15 +422,21 @@ class TemplatesScreen(QWidget):
             )
             return
 
-        # 5. Check descriptor existence and warn only
+        # 5. Check descriptor — offer to create it now if missing
         desc_path = dest_path / "modsmith-template.json"
         if not desc_path.exists():
-            QMessageBox.warning(
+            reply = QMessageBox.question(
                 self,
-                "Import Warning",
+                "Descriptor Missing",
                 "Template imported, but modsmith-template.json is missing.\n\n"
-                "Please add a descriptor file manually so ModSmith can recognize it correctly.",
+                "Create it now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
             )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._open_descriptor_dialog(dest_path)
+                self.refresh()
+                return
 
         QMessageBox.information(
             self,
@@ -308,6 +445,10 @@ class TemplatesScreen(QWidget):
         )
 
         self.refresh()
+
+    # ------------------------------------------------------------------
+    # Open templates folder
+    # ------------------------------------------------------------------
 
     @Slot()
     def _open_templates_folder(self) -> None:
@@ -335,40 +476,64 @@ class TemplatesScreen(QWidget):
                 f"Failed to open directory:\n{exc}",
             )
 
+    # ------------------------------------------------------------------
+    # Selection handler
+    # ------------------------------------------------------------------
+
     @Slot()
     def _on_selection_changed(self) -> None:
-        """Show details for the selected template."""
-        selected_rows = self._table.selectionModel().selectedRows()
-        if not selected_rows:
+        """Update detail panel and button state for the selected template."""
+        status = self._selected_template()
+
+        if status is None:
             self._txt_detail_path.setText("")
+            self._txt_detail_descriptor_path.setText("")
             self._lbl_detail_error.setText("Select a template row to view details.")
             self._lbl_detail_error.setStyleSheet("color: #666; font-size: 11px;")
+            self._btn_descriptor.setText("Create Descriptor")
+            self._btn_descriptor.setEnabled(False)
+            self._btn_open_descriptor_json.setEnabled(False)
+            self._detail_group.setEnabled(False)
             return
 
-        row = selected_rows[0].row()
-        if row < len(self._current_templates):
-            status = self._current_templates[row]
-            self._txt_detail_path.setText(str(status.path))
+        # Enable actions when selected
+        self._btn_descriptor.setEnabled(True)
+        self._btn_open_descriptor_json.setEnabled(True)
+        self._detail_group.setEnabled(True)
 
-            details = []
-            if not status.has_descriptor:
-                details.append("• Missing descriptor file (modsmith-template.json)")
-            elif not status.descriptor_valid:
-                details.append(f"• Invalid descriptor file: {status.error_message}")
-            if not status.has_gradle_wrapper_jar:
-                details.append("• Missing standard wrapper file (gradle/wrapper/gradle-wrapper.jar)")
-            if not status.has_gradlew:
-                details.append("• Missing gradlew shell script (required for Linux/macOS)")
-            if not status.has_gradlew_bat:
-                details.append("• Missing gradlew.bat batch script (required for Windows)")
+        # Populate path fields
+        self._txt_detail_path.setText(str(status.path))
+        descriptor_file = status.path / "modsmith-template.json"
+        self._txt_detail_descriptor_path.setText(str(descriptor_file))
 
-            if details:
-                self._lbl_detail_error.setText("\n".join(details))
-                # If blocker issues exist, color red, else color amber
-                if not status.has_descriptor or not status.descriptor_valid or not status.has_gradle_wrapper_jar:
-                    self._lbl_detail_error.setStyleSheet("color: #b00; font-size: 11px;")
-                else:
-                    self._lbl_detail_error.setStyleSheet("color: #b87800; font-size: 11px;")
+        # Update descriptor button label
+        if status.has_descriptor:
+            self._btn_descriptor.setText("Edit Descriptor")
+        else:
+            self._btn_descriptor.setText("Create Descriptor")
+
+        # Build status details
+        details = []
+        if not status.has_descriptor:
+            details.append(
+                "• Missing descriptor file (modsmith-template.json)\n"
+                "  → Click \"Create Descriptor\" to fix it."
+            )
+        elif not status.descriptor_valid:
+            details.append(f"• Invalid descriptor file: {status.error_message}")
+        if not status.has_gradle_wrapper_jar:
+            details.append("• Missing standard wrapper file (gradle/wrapper/gradle-wrapper.jar)")
+        if not status.has_gradlew:
+            details.append("• Missing gradlew shell script (required for Linux/macOS)")
+        if not status.has_gradlew_bat:
+            details.append("• Missing gradlew.bat batch script (required for Windows)")
+
+        if details:
+            self._lbl_detail_error.setText("\n".join(details))
+            if not status.has_descriptor or not status.descriptor_valid or not status.has_gradle_wrapper_jar:
+                self._lbl_detail_error.setStyleSheet("color: #b00; font-size: 11px;")
             else:
-                self._lbl_detail_error.setText("✓ Template is valid and ready to compile.")
-                self._lbl_detail_error.setStyleSheet("color: #060; font-size: 11px;")
+                self._lbl_detail_error.setStyleSheet("color: #b87800; font-size: 11px;")
+        else:
+            self._lbl_detail_error.setText("✓ Template is valid and ready to compile.")
+            self._lbl_detail_error.setStyleSheet("color: #060; font-size: 11px;")

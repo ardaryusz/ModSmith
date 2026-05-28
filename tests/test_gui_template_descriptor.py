@@ -508,3 +508,61 @@ class TestTemplatesScreenDescriptor:
         assert status_item.text() == "OK", (
             f"Expected OK after descriptor creation, got: {status_item.text()}"
         )
+
+    def test_templates_screen_empty_state_and_disabled_controls(self, qt_app, mock_dialogs, tmp_path, monkeypatch):
+        """When MODTEMPLATES is empty, the table, detail group, and descriptor buttons should be hidden, and the empty state label shown."""
+        tpl_dir = tmp_path / "MODTEMPLATES"
+        tpl_dir.mkdir()
+        monkeypatch.setenv("MODSMITH_HOME", str(tmp_path))
+
+        screen = TemplatesScreen()
+
+        # Verify hidden widgets
+        assert screen._table.isHidden()
+        assert screen._detail_group.isHidden()
+        assert screen._btn_descriptor.isHidden()
+        assert screen._btn_open_descriptor_json.isHidden()
+
+        # Verify empty state label is visible and contains expected text
+        assert not screen._lbl_empty_state.isHidden()
+        assert "No templates found in:" in screen._lbl_empty_state.text()
+        assert "Use Add Template to import a template folder." in screen._lbl_empty_state.text()
+
+    def test_templates_screen_missing_state(self, qt_app, mock_dialogs, tmp_path, monkeypatch):
+        """When MODTEMPLATES does not exist, the screen should show missing state warning."""
+        # MODTEMPLATES does not exist
+        monkeypatch.setenv("MODSMITH_HOME", str(tmp_path))
+
+        screen = TemplatesScreen()
+
+        # Verify hidden widgets
+        assert screen._table.isHidden()
+        assert screen._detail_group.isHidden()
+        assert screen._btn_descriptor.isHidden()
+        assert screen._btn_open_descriptor_json.isHidden()
+
+        # Verify missing state label is visible and contains expected text
+        assert not screen._lbl_empty_state.isHidden()
+        assert "Templates folder does not exist:" in screen._lbl_empty_state.text()
+
+    def test_templates_screen_non_empty_shows_controls_and_disabled_initially(self, qt_app, mock_dialogs, tmp_path, monkeypatch):
+        """When MODTEMPLATES is non-empty, the table, details, and buttons are visible but disabled initially."""
+        tpl_dir = tmp_path / "MODTEMPLATES"
+        tpl_dir.mkdir()
+        tpl = tpl_dir / "forge-1.20.1"
+        tpl.mkdir()
+        monkeypatch.setenv("MODSMITH_HOME", str(tmp_path))
+
+        screen = TemplatesScreen()
+
+        # Verify visible widgets
+        assert not screen._table.isHidden()
+        assert not screen._detail_group.isHidden()
+        assert not screen._btn_descriptor.isHidden()
+        assert not screen._btn_open_descriptor_json.isHidden()
+        assert screen._lbl_empty_state.isHidden()
+
+        # Verify buttons and detail group are disabled initially (no selection)
+        assert not screen._btn_descriptor.isEnabled()
+        assert not screen._btn_open_descriptor_json.isEnabled()
+        assert not screen._detail_group.isEnabled()

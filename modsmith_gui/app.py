@@ -190,6 +190,34 @@ QHeaderView::section {
     font-weight: bold;
     font-size: 11px;
 }
+
+/* Premium Flat Tabs */
+QTabWidget::pane {
+    border: 1px solid #c8c8c8;
+    background-color: #ffffff;
+    border-radius: 4px;
+    position: absolute;
+    top: -1px;
+}
+QTabBar::tab {
+    background-color: #e0e0e0;
+    color: #222222;
+    border: 1px solid #c8c8c8;
+    border-bottom: none;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    padding: 6px 16px;
+    margin-right: 2px;
+}
+QTabBar::tab:selected {
+    background-color: #ffffff;
+    border-bottom: 1px solid #ffffff;
+    font-weight: bold;
+    color: #111111;
+}
+QTabBar::tab:hover:!selected {
+    background-color: #d8d8d8;
+}
 """
 
 

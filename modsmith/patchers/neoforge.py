@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from modsmith.context import TargetContext
 from modsmith.patchers.base import BasePatcher
+from modsmith.patchers.forge import ForgePatcher
 
 
 class NeoForgePatcher(BasePatcher):
@@ -57,12 +58,21 @@ class NeoForgePatcher(BasePatcher):
             "Example mod description...": ctx.mod_ctx.description,
         }
 
+        inject_logo = (
+            ctx.mod_ctx.config.icon
+            and ctx.mod_ctx.config.icon.lower().endswith(".png")
+        )
+
         if neoforge_toml_template.exists():
             self.replace_in_file(neoforge_toml_template, replacements)
+            if inject_logo:
+                ForgePatcher._inject_logo_file(neoforge_toml_template, "icon.png")
             patched_any = True
         
         if neoforge_toml_resource.exists():
             self.replace_in_file(neoforge_toml_resource, replacements)
+            if inject_logo:
+                ForgePatcher._inject_logo_file(neoforge_toml_resource, "icon.png")
             patched_any = True
 
         if not patched_any:

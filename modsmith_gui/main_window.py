@@ -33,7 +33,6 @@ from modsmith_gui.screens.home import HomeScreen
 from modsmith_gui.screens.templates import TemplatesScreen
 from modsmith_gui.screens.recipes import RecipesScreen
 from modsmith_gui.screens.workspace import WorkspaceScreen
-from modsmith_gui.screens.readme import ReadmeScreen
 from modsmith_gui.screens.generate_build import GenerateBuildScreen
 
 
@@ -44,7 +43,6 @@ _NAV_ITEMS = [
     ("Templates", TemplatesScreen),
     ("Recipes", RecipesScreen),
     ("Workspace", WorkspaceScreen),
-    ("README", ReadmeScreen),
     ("Generate & Build", GenerateBuildScreen),
 ]
 

@@ -12,6 +12,7 @@ Phase 5:
 
 from __future__ import annotations
 
+import os
 import shutil
 from modsmith.utils import safe_delete_tree
 from dataclasses import dataclass, field
@@ -239,6 +240,40 @@ def generate(
                     _write_default_readme(readme_dest, mod_ctx)
         else:
             _write_default_readme(readme_dest, mod_ctx)
+
+        # Copy mod icon to loader-specific resource location (PNG only)
+        if mod_ctx.config.icon:
+            icon_src = mod_ctx.workspace_dir / mod_ctx.config.icon.replace("/", os.sep)
+            if icon_src.is_file():
+                if icon_src.suffix.lower() == ".png":
+                    try:
+                        if tc.loader == "fabric":
+                            # Fabric: src/main/resources/assets/<mod_id>/icon.png
+                            icon_dest_dir = (
+                                output_repo_dir / "src" / "main" / "resources"
+                                / "assets" / mod_ctx.mod_id
+                            )
+                            icon_dest_dir.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(icon_src, icon_dest_dir / "icon.png")
+                        else:
+                            # Forge / NeoForge: src/main/resources/icon.png
+                            icon_dest_dir = output_repo_dir / "src" / "main" / "resources"
+                            icon_dest_dir.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(icon_src, icon_dest_dir / "icon.png")
+                    except Exception as exc:
+                        warnings.append(
+                            f"Failed to copy mod icon for '{tc.branch}': {exc}"
+                        )
+                else:
+                    warnings.append(
+                        f"Mod icon '{mod_ctx.config.icon}' is not PNG — "
+                        f"skipping icon injection for '{tc.branch}'"
+                    )
+            else:
+                warnings.append(
+                    f"Mod icon file not found: {icon_src} — "
+                    f"skipping icon injection for '{tc.branch}'"
+                )
 
         # Patch metadata
         try:

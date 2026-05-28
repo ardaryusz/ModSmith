@@ -88,7 +88,43 @@ class ForgePatcher(BasePatcher):
                 "Example mod description...": ctx.mod_ctx.description,
             }
             self.replace_in_file(mods_toml, replacements)
+
+            # Inject/replace logoFile for PNG icons
+            if ctx.mod_ctx.config.icon and ctx.mod_ctx.config.icon.lower().endswith(".png"):
+                self._inject_logo_file(mods_toml, "icon.png")
         else:
             warnings.append("META-INF/mods.toml is missing")
 
         return warnings
+
+    @staticmethod
+    def _inject_logo_file(toml_path: Path, logo_value: str) -> None:
+        """Set or replace ``logoFile`` in a TOML metadata file.
+
+        If ``logoFile`` already exists, replace its value.
+        Otherwise, insert ``logoFile="<logo_value>"`` after the first
+        ``[[mods]]`` header.
+        """
+        try:
+            content = toml_path.read_text(encoding="utf-8")
+        except Exception:
+            return
+
+        logo_pattern = re.compile(r'^(\s*logoFile\s*=\s*).*$', re.MULTILINE)
+        if logo_pattern.search(content):
+            content = logo_pattern.sub(rf'\g<1>"{logo_value}"', content)
+        else:
+            # Insert after [[mods]] section header
+            mods_header = re.search(r'^\[\[mods\]\]\s*$', content, re.MULTILINE)
+            if mods_header:
+                insert_pos = mods_header.end()
+                content = (
+                    content[:insert_pos]
+                    + f'\nlogoFile="{logo_value}"\n'
+                    + content[insert_pos:]
+                )
+
+        try:
+            toml_path.write_text(content, encoding="utf-8")
+        except Exception:
+            pass

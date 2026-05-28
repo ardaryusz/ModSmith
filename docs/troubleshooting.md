@@ -84,3 +84,12 @@ This page lists common errors and solutions encountered when using, compiling, o
 ### 12. Push to remote rejected because the remote contains existing files
 * **Cause:** The remote Git repository contains files (like `README.md` or `LICENSE`) that do not exist in your local generated target branch.
 * **Solution:** Run `git pull origin <branch-name> --allow-unrelated-histories` to merge remote files before pushing, or force-push if you want to overwrite the remote branch.
+
+---
+
+## Assets & Icon Issues
+
+### 13. Mod icon is not being injected into generated project
+* **Cause:** Only PNG icons are injected into generated mod projects. If you selected a JPG, GIF, or WebP file, it is stored in `WORKSPACE/ASSETS/` and previewed in the GUI, but not injected into the generated metadata or copied to the mod resources.
+* **Solution:** Use a PNG icon for mod icon injection. The GUI will warn you when selecting a non-PNG file.
+

@@ -105,6 +105,9 @@ class ModConfig:
     issue_tracker: str = ""
     """Optional issue tracker URL."""
 
+    icon: str = ""
+    """Optional mod icon path relative to WORKSPACE (e.g. ``"ASSETS/icon.png"``)."""
+
 
 @dataclass
 class TemplateDescriptor:
@@ -272,6 +275,7 @@ def load_mod_config(path: Path | str) -> ModConfig:
         main_class=main_class,
         homepage=data.get("homepage", ""),
         issue_tracker=data.get("issue_tracker", ""),
+        icon=data.get("icon", ""),
     )
 
 

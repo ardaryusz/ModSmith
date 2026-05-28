@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,9 +14,12 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QGroupBox, QFormLayout, QTableWidget, QTableWidgetItem,
     QHeaderView, QLineEdit, QPlainTextEdit, QComboBox,
-    QMessageBox, QScrollArea, QFrame,
+    QMessageBox, QScrollArea, QFrame, QFileDialog,
 )
 from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QPixmap
+
+logger = logging.getLogger(__name__)
 
 from modsmith.config import load_mod_config, ConfigError
 from modsmith_gui.widgets.log_panel import LogPanel
@@ -183,6 +188,52 @@ class WorkspaceScreen(QWidget):
 
         layout.addWidget(targets_group)
 
+        # --- Mod Icon GroupBox ---
+        icon_group = QGroupBox("Mod Icon")
+        icon_layout = QVBoxLayout(icon_group)
+        icon_layout.setContentsMargins(10, 8, 10, 8)
+        icon_layout.setSpacing(8)
+
+        icon_info_row = QHBoxLayout()
+        icon_info_row.setSpacing(10)
+
+        self._icon_thumbnail = QLabel()
+        self._icon_thumbnail.setFixedSize(64, 64)
+        self._icon_thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._icon_thumbnail.setStyleSheet(
+            "border: 1px solid #ccc; background-color: #f5f5f5;"
+        )
+        self._icon_thumbnail.setText("No icon")
+
+        self._icon_path_label = QLabel("No icon selected")
+        self._icon_path_label.setWordWrap(True)
+
+        icon_info_row.addWidget(self._icon_thumbnail)
+        icon_info_row.addWidget(self._icon_path_label, stretch=1)
+
+        icon_layout.addLayout(icon_info_row)
+
+        icon_btn_row = QHBoxLayout()
+        icon_btn_row.setSpacing(8)
+
+        self._btn_select_icon = QPushButton("Select Icon")
+        self._btn_select_icon.setFixedWidth(100)
+        self._btn_select_icon.clicked.connect(self._select_icon)
+
+        self._btn_clear_icon = QPushButton("Clear Icon")
+        self._btn_clear_icon.setFixedWidth(100)
+        self._btn_clear_icon.clicked.connect(self._clear_icon)
+
+        icon_btn_row.addWidget(self._btn_select_icon)
+        icon_btn_row.addWidget(self._btn_clear_icon)
+        icon_btn_row.addStretch()
+
+        icon_layout.addLayout(icon_btn_row)
+        layout.addWidget(icon_group)
+
+        # Internal icon state (relative path like "ASSETS/icon.png")
+        self._icon_value: str = ""
+
         # First refresh load
         self.refresh()
 
@@ -265,6 +316,8 @@ class WorkspaceScreen(QWidget):
         self._txt_homepage.setText("")
         self._txt_issue_tracker.setText("")
 
+        self._set_icon_state("")
+
         self._rebuild_targets_table([])
         self._add_target_row()  # Add one clean row
 
@@ -282,6 +335,8 @@ class WorkspaceScreen(QWidget):
         self._txt_description.setPlainText(data.get("description", ""))
         self._txt_homepage.setText(data.get("homepage", ""))
         self._txt_issue_tracker.setText(data.get("issue_tracker", ""))
+
+        self._set_icon_state(data.get("icon", ""))
 
         raw_targets = data.get("targets", [])
         self._rebuild_targets_table(raw_targets)
@@ -588,6 +643,10 @@ class WorkspaceScreen(QWidget):
             "targets": []
         }
 
+        # Include icon only when set (omit from JSON if cleared)
+        if self._icon_value:
+            config_data["icon"] = self._icon_value
+
         # Read targets list
         for r in range(self._table.rowCount()):
             loader_combo = self._table.cellWidget(r, 0)
@@ -704,3 +763,82 @@ class WorkspaceScreen(QWidget):
             self._txt_mod_id.setStyleSheet("border: 1px solid #b00; background-color: #fce8e6;")
         else:
             self._txt_mod_id.setStyleSheet("")
+
+    # ------------------------------------------------------------------
+    # Mod Icon helpers
+    # ------------------------------------------------------------------
+
+    def _set_icon_state(self, icon_path: str) -> None:
+        """Update icon UI state and internal value.
+
+        Args:
+            icon_path: Relative path like ``"ASSETS/icon.png"`` or ``""``.
+        """
+        # Normalize to forward slashes
+        self._icon_value = icon_path.replace("\\", "/") if icon_path else ""
+
+        if self._icon_value:
+            self._icon_path_label.setText(self._icon_value)
+
+            # Try to load thumbnail
+            abs_path = _get_default_dir("WORKSPACE") / self._icon_value.replace("/", os.sep)
+            if abs_path.is_file():
+                pixmap = QPixmap(str(abs_path))
+                if not pixmap.isNull():
+                    self._icon_thumbnail.setPixmap(
+                        pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio,
+                                      Qt.TransformationMode.SmoothTransformation)
+                    )
+                else:
+                    self._icon_thumbnail.setText("(err)")
+            else:
+                self._icon_thumbnail.setText("(miss)")
+        else:
+            self._icon_path_label.setText("No icon selected")
+            self._icon_thumbnail.clear()
+            self._icon_thumbnail.setText("No icon")
+
+    @Slot()
+    def _select_icon(self) -> None:
+        """Let user pick an image file, copy it to WORKSPACE/ASSETS, store the reference."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Mod Icon",
+            "",
+            "Images (*.png *.jpg *.jpeg *.gif *.webp);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        src = Path(file_path)
+        assets_dir = _get_default_dir("WORKSPACE") / "ASSETS"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+
+        # Warn if not PNG for mod icon injection
+        if src.suffix.lower() != ".png":
+            QMessageBox.warning(
+                self,
+                "Icon Format",
+                "PNG is recommended for mod icons.\n\n"
+                "Non-PNG icons will be stored and previewed, but only PNG "
+                "icons are injected into generated mod projects.",
+            )
+
+        # Copy to ASSETS (auto-suffix if exists)
+        try:
+            from modsmith_gui.assets_utils import safe_copy_to_assets
+            dest = safe_copy_to_assets(src, assets_dir)
+        except Exception as exc:
+            QMessageBox.critical(self, "Select Icon", f"Failed to copy icon:\n{exc}")
+            return
+
+        # Store relative path with forward slashes
+        relative = f"ASSETS/{dest.name}"
+        self._set_icon_state(relative)
+        self._log_panel.append_line(f"Mod icon set: {relative}")
+
+    @Slot()
+    def _clear_icon(self) -> None:
+        """Remove the mod icon selection."""
+        self._set_icon_state("")
+        self._log_panel.append_line("Mod icon cleared.")

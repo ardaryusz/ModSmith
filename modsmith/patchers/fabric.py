@@ -84,6 +84,10 @@ class FabricPatcher(BasePatcher):
                     if ctx.mod_ctx.issue_tracker:
                         data["contact"]["issues"] = ctx.mod_ctx.issue_tracker
 
+                # Set icon field (PNG only — matches the file copied by generator)
+                if ctx.mod_ctx.config.icon and ctx.mod_ctx.config.icon.lower().endswith(".png"):
+                    data["icon"] = f"assets/{ctx.mod_ctx.mod_id}/icon.png"
+
                 with open(fabric_json_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=4)
             except Exception as e:

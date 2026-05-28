@@ -92,11 +92,15 @@ class DashboardScreen(QWidget):
         self._lbl_summary_recipes = QLabel("—")
         self._lbl_summary_config = QLabel("—")
         self._lbl_summary_readme = QLabel("—")
+        self._lbl_summary_assets = QLabel("—")
+        self._lbl_summary_icon = QLabel("—")
 
         summary_form.addRow("Templates:", self._lbl_summary_templates)
         summary_form.addRow("Recipes:", self._lbl_summary_recipes)
         summary_form.addRow("modsmith.json:", self._lbl_summary_config)
         summary_form.addRow("README.md:", self._lbl_summary_readme)
+        summary_form.addRow("Assets:", self._lbl_summary_assets)
+        summary_form.addRow("Mod Icon:", self._lbl_summary_icon)
 
         root.addWidget(summary_group)
 
@@ -264,6 +268,42 @@ class DashboardScreen(QWidget):
         else:
             self._lbl_summary_readme.setText("Exists")
             self._lbl_summary_readme.setStyleSheet("color: #060; font-weight: bold;")
+
+        # 5. Assets folder summary
+        assets_dir = workspace_dir / "ASSETS"
+        if assets_dir.is_dir():
+            try:
+                asset_count = sum(1 for f in assets_dir.iterdir() if f.is_file())
+                self._lbl_summary_assets.setText(f"Exists ({asset_count} file(s))")
+                self._lbl_summary_assets.setStyleSheet("color: #060; font-weight: bold;")
+            except Exception:
+                self._lbl_summary_assets.setText("Exists")
+                self._lbl_summary_assets.setStyleSheet("color: #060; font-weight: bold;")
+        else:
+            self._lbl_summary_assets.setText("Folder missing (optional)")
+            self._lbl_summary_assets.setStyleSheet("color: #b87800; font-weight: bold;")
+
+        # 6. Mod icon summary
+        config_path_icon = workspace_dir / "DETAILS" / "modsmith.json"
+        icon_text = "None selected"
+        icon_color = "#888"
+        try:
+            if config_path_icon.exists():
+                data = json.loads(config_path_icon.read_text(encoding="utf-8"))
+                icon_val = data.get("icon", "")
+                if icon_val:
+                    icon_text = f"Selected: {icon_val}"
+                    # Check if the file actually exists
+                    icon_abs = workspace_dir / icon_val.replace("/", os.sep)
+                    if icon_abs.is_file():
+                        icon_color = "#060"
+                    else:
+                        icon_text += " (file missing)"
+                        icon_color = "#b87800"
+        except Exception:
+            pass
+        self._lbl_summary_icon.setText(icon_text)
+        self._lbl_summary_icon.setStyleSheet(f"color: {icon_color}; font-weight: bold;")
 
     def _refresh_dist(self, workspace_dir: Path) -> None:
         dist_dir = workspace_dir / "DIST"

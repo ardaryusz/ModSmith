@@ -52,6 +52,11 @@ class ModContext:
         return self.workspace_dir / "DETAILS"
 
     @property
+    def assets_dir(self) -> Path:
+        """``WORKSPACE/ASSETS/``"""
+        return self.workspace_dir / "ASSETS"
+
+    @property
     def output_repo_dir(self) -> Path:
         """``MODS/<output_repo_name>/``"""
         return self.mods_dir / self.config.output_repo_name
@@ -103,6 +108,10 @@ class ModContext:
     @property
     def issue_tracker(self) -> str:
         return self.config.issue_tracker
+
+    @property
+    def icon(self) -> str:
+        return self.config.icon
 
 
 # ---------------------------------------------------------------------------

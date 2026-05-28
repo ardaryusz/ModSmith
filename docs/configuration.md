@@ -18,6 +18,7 @@ ModSmith reads your mod definition and compilation targets from `WORKSPACE/DETAI
 * **`main_class`** (Optional, string): The class name of your mod initializer. If omitted, it will default to the `mod_name` formatted in PascalCase (e.g., `EasyPeasyGunpowder`).
 * **`homepage`** (Optional, string): URL pointing to your mod's homepage or website.
 * **`issue_tracker`** (Optional, string): URL pointing to where bugs and issues can be reported.
+* **`icon`** (Optional, string): Relative path to a mod icon image under `WORKSPACE/` (e.g. `ASSETS/icon.png`). PNG is recommended. During generation, PNG icons are automatically injected into loader-specific metadata files.
 * **`targets`** (Required, array of objects): A list of build configurations representing loaders and Minecraft versions.
 
 ### Target-Specific Fields
@@ -49,6 +50,7 @@ Below is a complete `modsmith.json` defining two targets: Forge for Minecraft 1.
   "description": "Adds simple crafting recipes for gunpowder.",
   "homepage": "https://github.com/ardaryusz/EasyPeasyGunpowder",
   "issue_tracker": "https://github.com/ardaryusz/EasyPeasyGunpowder/issues",
+  "icon": "ASSETS/icon.png",
   "output_repo_name": "EasyPeasyGunpowder",
   "targets": [
     {

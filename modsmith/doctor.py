@@ -103,6 +103,13 @@ def diagnose_environment(
     else:
         result.add_warning(f"WORKSPACE/DIST directory does not exist: {dist_dir}")
 
+    # WORKSPACE/ASSETS (Missing is INFO only, never an error)
+    assets_dir = workspace_dir / "ASSETS"
+    if assets_dir.is_dir():
+        result.add_info(f"WORKSPACE/ASSETS directory exists: {assets_dir}")
+    else:
+        result.add_info(f"WORKSPACE/ASSETS directory does not exist (optional): {assets_dir}")
+
     # MODTEMPLATES (Missing templates root is an error)
     if templates_dir.is_dir():
         result.add_info(f"MODTEMPLATES directory exists: {templates_dir}")

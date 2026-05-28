@@ -32,13 +32,15 @@ graph TD
 The following directories reside under your `MODSMITH_HOME` (or the folder from which you execute ModSmith if not set):
 
 * **`MODTEMPLATES/`**
-  Stores unpacked Minecraft MDK templates for various loaders and Minecraft versions (e.g., `forge-1.20.1`, `fabric-1.21`). These are used as blueprints when generating your projects.
+  Stores unpacked Minecraft MDK templates for various loaders and Minecraft versions (e.g., `forge-1.20.1`, `fabric-1.21`). Each template folder must contain a `modsmith-template.json` descriptor so ModSmith knows the loader, version, and recipe format to use. See [templates.md](templates.md) for details.
 * **`WORKSPACE/DETAILS/`**
   Contains `modsmith.json`, the main configuration file where you declare metadata, options, and compile targets.
 * **`WORKSPACE/RECIPES/`**
   Place all your custom recipe JSON files here. You can use either legacy (1.20) or modern (1.21) recipe formats, and ModSmith will handle conversion.
 * **`WORKSPACE/README/`**
   *Optional.* Contains a `README.md` that is automatically copied to the root of each generated mod target branch.
+* **`WORKSPACE/ASSETS/`**
+  *Optional.* Stores README images and mod icons. README images use relative paths like `../ASSETS/image.png`. Mod icons are referenced in `modsmith.json` via the `icon` field.
 * **`WORKSPACE/DIST/`**
   The target folder where finalized, compiled mod release `.jar` files are copied after a successful `build`.
 * **`MODS/`**
@@ -58,12 +60,17 @@ Desktop/ModSmith/
 ├── WORKSPACE/
 │   ├── DETAILS/
 │   ├── RECIPES/
+│   ├── ASSETS/
 │   └── DIST/
 └── MODS/
 ```
 
 ### Step 2: Add Unpacked Templates
-Download standard Fabric, Forge, or NeoForge MDKs, unzip them, and place them into `MODTEMPLATES/` (e.g., `MODTEMPLATES/forge-1.20.1`). Make sure the gradle wrapper is present. You can verify that all your templates are valid and ready to use by running `modsmith template list`.
+Download standard Fabric, Forge, or NeoForge MDKs, unzip them, and place them into `MODTEMPLATES/` (e.g., `MODTEMPLATES/forge-1.20.1`). Make sure the gradle wrapper is present.
+
+Each template folder needs a `modsmith-template.json` descriptor. The easiest way to create one is via the GUI **Templates** screen → select the template → click **Create Descriptor** (see [templates.md](templates.md#creating-and-editing-the-descriptor-via-gui)). The form infers the loader, version, and recipe format from the folder name automatically.
+
+You can verify that all your templates are valid and ready to use by running `modsmith template list`.
 
 ### Step 3: Define Mod Configuration
 Create `WORKSPACE/DETAILS/modsmith.json`:
@@ -130,9 +137,11 @@ During the `generate` phase, ModSmith initializes a local Git repository inside 
 
 After running `modsmith build`, the compiled binary outputs are retrieved from the build directory of each target branch and copied to your `WORKSPACE/DIST/` folder. They follow this naming convention:
 ```
-<mod_id>-<mc_range>-<loader>-<mod_version>.jar
+<mod_id>-<mc_version_label>-<loader>-<mod_version>.jar
 ```
 For example: `easypeasygunpowder-1.20.1-forge-1.1.0.jar`
+
+`mc_version_label` is derived from the target's `minecraft_version` (e.g. `1.20.1`) or `from-through` for inclusive version ranges (e.g. `1.21.2-1.21.11`).
 
 ---
 
@@ -148,13 +157,24 @@ Under the **Workspace** tab, you can view and edit your active `modsmith.json` c
 * Clicking **Save Config** automatically saves a local backup (`modsmith.json.bak`) of your prior settings before serializing pretty-printed, UTF-8 encoded JSON to disk.
 * Click **Validate Config** to execute backend checks and log validation passes or errors.
 
-### README Editor & Previewer
-The **README** tab provides a convenient environment to edit `WORKSPACE/README/README.md`:
-* Edit raw Markdown inside a monospace plain-text editor.
-* Switch to the **Preview** tab to inspect live compiled HTML formatting (headings, lists, bold/italic, blockquotes) powered by Qt's Markdown engine.
-* Easily save modifications or load changes at any point.
+### README Documentation
+ModSmith copies a `README.md` file from `WORKSPACE/README/README.md` to the root of each generated mod target branch:
+* You can write and edit your `README.md` externally in your preferred Markdown or text editor inside `WORKSPACE/README/`.
+* Any images used in your README can be stored inside `WORKSPACE/ASSETS/` and referenced using relative paths like `../ASSETS/<filename>`.
+* During generation, the `README.md` is packaged cleanly into each target branch.
 
-### Template Import
+### Mod Icon Selection
+In the **Workspace** tab, the **Mod Icon** section allows you to select a mod icon image:
+* Click **Select Icon** to choose an image file. PNG is recommended for mod icon injection; non-PNG files are stored and previewed but not injected into generated mod projects.
+* The selected icon is copied to `WORKSPACE/ASSETS/` and referenced in `modsmith.json` as `ASSETS/<filename>`.
+* A 64×64 thumbnail preview is shown in the workspace editor.
+* Click **Clear Icon** to remove the icon selection. Saving the config will omit the `icon` field.
+* During generation, PNG icons are automatically copied to the correct loader-specific resource location and referenced in mod metadata files (`fabric.mod.json`, `mods.toml`, `neoforge.mods.toml`).
+
+### Template Import & Descriptor Editor
 In the **Templates** tab, you can easily integrate new templates without navigating filesystem directories manually:
 * Click **Add Template**, input the destination folder name (e.g. `fabric-1.21.1`), and select the source directory (such as an unzipped MDK).
-* The tool recursively copies files, prompts for confirmation before safely overwriting any conflicting folder, and logs success details while immediately refreshing lists.
+* The tool recursively copies files, prompts for confirmation before safely overwriting any conflicting folder, and logs success details.
+* **If `modsmith-template.json` is missing**, the GUI asks: *"Create it now?"* — answering Yes opens the descriptor form with fields pre-filled from the folder name.
+* You can also create or edit descriptors at any time by selecting a template row and clicking **Create Descriptor** or **Edit Descriptor**.
+* Click **Open Descriptor JSON** to open `modsmith-template.json` in your system default editor.

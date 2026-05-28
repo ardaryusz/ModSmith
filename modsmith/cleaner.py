@@ -66,7 +66,7 @@ def clean(
         )
 
     if not force:
-        prompt_msg = f"Delete generated repo MODS/{config.output_repo_name}? [y/N] "
+        prompt_msg = f"Delete generated repo MODS/{config.output_repo_name}? [y/n] "
         
         if confirm_fn is None:
             try:
