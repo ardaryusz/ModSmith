@@ -2,6 +2,10 @@
 
 This document describes all CLI options, global flags, subcommands, and usage examples.
 
+> [!NOTE]
+> * **If using the pre-compiled installer:** Run `modsmith_cli` in place of `modsmith` in all examples (e.g., `modsmith_cli validate`).
+> * **If running from source/development:** Run `python -m modsmith` (e.g., `python -m modsmith validate`).
+
 ## Global Options
 
 Global options must be passed **before** the subcommand.

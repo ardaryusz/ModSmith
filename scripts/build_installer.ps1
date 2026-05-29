@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Orchestrates the full build pipeline:
-      1. Runs scripts/build_exe.ps1 to produce dist/ModSmith/modsmith.exe
+      1. Runs scripts/build_exe.ps1 to produce dist/ModSmith/modsmith.exe and modsmith_cli.exe
       2. Runs makensis to compile the NSIS installer
       3. Verifies the output at dist/installer/ModSmithSetup.exe
 
@@ -70,12 +70,20 @@ try {
         exit 1
     }
 
-    # Verify the exe was produced
-    $exePath = Join-Path $ProjectRoot "dist\ModSmith\modsmith.exe"
-    if (-not (Test-Path $exePath)) {
-        Write-Error "Expected executable not found: $exePath"
+    # Verify both executables were produced
+    $guiExePath = Join-Path $ProjectRoot "dist\ModSmith\modsmith.exe"
+    if (-not (Test-Path $guiExePath)) {
+        Write-Error "Expected GUI executable not found: $guiExePath"
         exit 1
     }
+
+    $cliExePath = Join-Path $ProjectRoot "dist\ModSmith\modsmith_cli.exe"
+    if (-not (Test-Path $cliExePath)) {
+        Write-Error "Expected CLI executable not found: $cliExePath"
+        exit 1
+    }
+    Write-Host "  GUI: $guiExePath" -ForegroundColor Green
+    Write-Host "  CLI: $cliExePath" -ForegroundColor Green
 
     # --- Step 2: Ensure output directory exists and clean stale setup exe ---
     $installerOutDir = Join-Path $ProjectRoot "dist\installer"

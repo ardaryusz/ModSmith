@@ -4,10 +4,9 @@ This guide covers how to install ModSmith using the Windows installer or set it 
 
 ## Installing via Windows Installer (Recommended)
 
-The easiest way to get started with ModSmith on Windows is by downloading and running the pre-built installer: `modsmith_<version>_<arch>-setup.exe` (e.g., `modsmith_1.0.0_x64-setup.exe`).
+The easiest way to get started with ModSmith on Windows is by downloading and running the pre-built installer: `modsmith_<version>_<arch>-setup.exe` (e.g., `modsmith_1.3.0_x64-setup.exe`).
 
-### 1. Run the Setup Wizard
-Double-click the downloaded setup file (e.g., `modsmith_1.0.0_x64-setup.exe`) and follow the on-screen prompts.
+The installer bundles both the **ModSmith GUI** (`modsmith.exe`) and the **CLI** (`modsmith_cli.exe`) into a single distribution. After installation, the **ModSmith** Start Menu shortcut launches the GUI, and the CLI is available from any terminal.
 
 ### 2. Quick One-line Install (PowerShell)
 You can download and run the latest installer directly from the GitHub releases in one command. Run the following command in an elevated PowerShell session (Run as Administrator):
@@ -64,15 +63,15 @@ The installer defines a user-level environment variable named `MODSMITH_HOME` po
 #### Changing the Home Directory Later
 If you ever wish to use a different folder as your workspace root without passing explicit command-line flags, you can run the following command to persistently change it:
 ```bash
-modsmith home set "D:\ModSmith"
+modsmith_cli home set "D:\ModSmith"
 ```
 *Note: You will need to open a new terminal window for the environment variable change to take effect in your command shells.*
 
 #### Manual Workspace Migration
 If you are moving from an existing installation (e.g., from `%USERPROFILE%\Documents\ModSmith` to the new `%USERPROFILE%\Desktop\ModSmith` default):
 1. **Copy** your old ModSmith home folder contents to the new folder location.
-2. Run `modsmith home set <new location>` to point the environment to the new location.
-3. Run `modsmith doctor` to verify that all configuration and templates are parsed correctly.
+2. Run `modsmith_cli home set <new location>` to point the environment to the new location.
+3. Run `modsmith_cli doctor` to verify that all configuration and templates are parsed correctly.
 4. Manually **delete** the old folder only after you have fully verified that the new workspace is functioning correctly.
 
 ---
@@ -102,10 +101,16 @@ If you prefer to run ModSmith directly using Python or want to develop new featu
 
 3. **Install Dependencies in Editable/Development Mode:**
    ```bash
-   pip install -e ".[dev]"
+   pip install -e ".[dev,gui]"
    ```
+   Omit `gui` if you only need the CLI.
 
-4. **Verify the Installation:**
+4. **Verify the CLI Installation:**
    ```bash
    python -m modsmith --help
+   ```
+
+5. **Launch the GUI (requires PySide6):**
+   ```bash
+   python -m modsmith_gui
    ```

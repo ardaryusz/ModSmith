@@ -4,10 +4,10 @@ This page covers the design and packaging of the ModSmith Windows Installer.
 
 ## Overview
 
-ModSmith provides a native Windows installation setup wizard formatted as `modsmith_<version>_<arch>-setup.exe` (e.g., `modsmith_1.0.0_x64-setup.exe`) using a combination of two tools:
+ModSmith provides a native Windows installation setup wizard formatted as `modsmith_<version>_<arch>-setup.exe` (e.g., `modsmith_1.3.0_x64-setup.exe`) using a combination of two tools:
 
-* **PyInstaller:** Packages the Python source code and runtime environment into a standalone, dependency-free `modsmith.exe` inside `dist/ModSmith/`.
-* **NSIS (Nullsoft Scriptable Install System):** Compiles the executable and support files into a single, self-extracting installer setup executable.
+* **PyInstaller:** Packages the Python source code and runtime environment into standalone executables — `modsmith.exe` (GUI, windowed) and `modsmith_cli.exe` (CLI, console) — inside `dist/ModSmith/`.
+* **NSIS (Nullsoft Scriptable Install System):** Compiles the executables and support files into a single, self-extracting installer setup executable.
 
 ---
 
@@ -16,17 +16,20 @@ ModSmith provides a native Windows installation setup wizard formatted as `modsm
 The installer script (`installer/ModSmithInstaller.nsi`) is designed to provide a seamless setup experience without manual configuration:
 
 1. **Program Files Installation:**
-   Copies the application files to `C:\Program Files\ModSmith` (user-configurable). This folder is kept read-only for normal users.
+   Copies the application files to `C:\Program Files\ModSmith` (user-configurable). This folder is kept read-only for normal users. The distribution includes both `modsmith.exe` (GUI) and `modsmith_cli.exe` (CLI).
 2. **User Data Directory Creation:**
    Allows the user to select the home directory during installation (default: `%USERPROFILE%\Desktop\ModSmith`).
    Automatically initializes the user's workspace folders inside the selected home directory.
-   This includes folders like `MODTEMPLATES/`, `WORKSPACE/`, `WORKSPACE/RECIPES/`, `WORKSPACE/DIST/`, and `MODS/`.
+   This includes folders like `MODTEMPLATES/`, `WORKSPACE/`, `WORKSPACE/RECIPES/`, `WORKSPACE/ASSETS/`, `WORKSPACE/DIST/`, and `MODS/`.
 3. **Environment Setup:**
    Writes `MODSMITH_HOME` to `HKCU\Environment` set to the selected home path so the app knows where to run.
 4. **PATH Modification (Optional):**
    If checked, reads the current user `Path` registry value, appends the installation path safely (handling empty PATH or duplicates), writes it back, and broadcasts `WM_SETTINGCHANGE`.
 5. **Start Menu Shortcuts:**
-   Creates a "ModSmith Command Prompt" shortcut that opens PowerShell starting inside your ModSmith home folder, displaying a welcome message.
+   Creates three shortcuts:
+   * **ModSmith** — Launches `modsmith.exe` (the primary user-facing GUI).
+   * **ModSmith Command Prompt** — Opens PowerShell inside your ModSmith home folder, displaying a welcome message.
+   * **Uninstall ModSmith** — Runs the uninstaller.
 6. **Safe Uninstall:**
    * Cleans up registry entries, shortcuts, and application files under Program Files.
    * Restores `Path` and `MODSMITH_HOME` environment variables.
@@ -38,18 +41,20 @@ The installer script (`installer/ModSmithInstaller.nsi`) is designed to provide 
 
 After compiling a new version of the installer, perform the following steps to verify its behavior:
 
-1. [ ] Double-click `modsmith_<version>_<arch>-setup.exe` (e.g., `modsmith_1.0.0_x64-setup.exe`) to run the installation wizard.
+1. [ ] Double-click `modsmith_<version>_<arch>-setup.exe` (e.g., `modsmith_1.3.0_x64-setup.exe`) to run the installation wizard.
 2. [ ] Choose a custom path or keep the default `C:\Program Files\ModSmith` and click Next.
 3. [ ] Keep all components checked (Core, PATH, Start Menu) and click Install.
 4. [ ] Verify that the custom or default home folder (typically `%USERPROFILE%\Desktop\ModSmith`) exists and contains sample JSON files.
-5. [ ] Open the **ModSmith Command Prompt** from the Start Menu.
-6. [ ] Verify that PowerShell opens inside the home folder and shows a cyan colored title.
-7. [ ] Run `modsmith --version` and `modsmith validate` inside the terminal to verify they run successfully.
-8. [ ] Go to Windows Settings > Apps > Installed Apps, select ModSmith, and click **Uninstall**.
-9. [ ] Run the uninstaller.
-10. [ ] Verify that files under `C:\Program Files\ModSmith` are deleted.
-11. [ ] Verify that `MODSMITH_HOME` and the PATH additions are cleaned up from the registry.
-12. [ ] Confirm that your workspace directories and custom files inside the home directory **remain intact**.
+5. [ ] Open **ModSmith** from the Start Menu and verify the GUI launches (`modsmith.exe`) with the ModSmith taskbar icon.
+6. [ ] Open the **ModSmith Command Prompt** from the Start Menu.
+7. [ ] Verify that PowerShell opens inside the home folder and shows a cyan colored title.
+8. [ ] Run `modsmith_cli --version` inside the terminal to verify the CLI works.
+9. [ ] In the GUI, click **Validate** on the Generate & Build screen to confirm the GUI can run backend commands.
+10. [ ] Go to Windows Settings > Apps > Installed Apps, verify ModSmith shows the correct icon and version.
+11. [ ] Click **Uninstall** from Settings or the Start Menu shortcut.
+12. [ ] Verify that files under `C:\Program Files\ModSmith` are deleted.
+13. [ ] Verify that `MODSMITH_HOME` and the PATH additions are cleaned up from the registry.
+14. [ ] Confirm that your workspace directories and custom files inside the home directory **remain intact**.
 
 ---
 

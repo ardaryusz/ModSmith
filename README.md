@@ -65,16 +65,29 @@ Create the file `WORKSPACE/DETAILS/modsmith.json` defining your mod details and 
 
 Run the sequence of commands in your terminal:
 
-```bash
-# 1. Validate configuration, template compatibility, and recipes
-modsmith validate
+- **For Installed App Users:**
+  ```bash
+  # 1. Validate configuration, template compatibility, and recipes
+  modsmith_cli validate
 
-# 2. Overwrite/generate mod projects with proper structures and translated recipes
-modsmith generate
+  # 2. Overwrite/generate mod projects with proper structures and translated recipes
+  modsmith_cli generate
 
-# 3. Compile and build final production JAR files
-modsmith build
-```
+  # 3. Compile and build final production JAR files
+  modsmith_cli build
+  ```
+
+- **For Source/Developer Users:**
+  ```bash
+  # 1. Validate configuration, template compatibility, and recipes
+  python -m modsmith validate
+
+  # 2. Overwrite/generate mod projects with proper structures and translated recipes
+  python -m modsmith generate
+
+  # 3. Compile and build final production JAR files
+  python -m modsmith build
+  ```
 
 Once complete, your compiled mod `.jar` files will be placed inside `WORKSPACE/DIST/`.
 
@@ -82,12 +95,14 @@ Once complete, your compiled mod `.jar` files will be placed inside `WORKSPACE/D
 
 ## Basic Commands
 
-- `modsmith validate` — Run semantic and directory layout check.
-- `modsmith generate` — Generate project templates and convert recipes. Add `--force` to overwrite existing.
-- `modsmith build` — Check out targets and execute Gradle wrapper build tasks.
-- `modsmith clean` — Delete the generated mod projects directory.
-- `modsmith template list` — Scan and verify all available mod templates under `MODTEMPLATES`.
-- `modsmith home <SUBCOMMAND>` — Manage your ModSmith home directory and workspaces persistently (show, set, unset, open).
+*(Note: If using the pre-compiled installer, run `modsmith_cli` in place of `python -m modsmith`.)*
+
+- `python -m modsmith validate` (or `modsmith_cli validate`) — Run semantic and directory layout check.
+- `python -m modsmith generate` (or `modsmith_cli generate`) — Generate project templates and convert recipes. Add `--force` to overwrite existing.
+- `python -m modsmith build` (or `modsmith_cli build`) — Check out targets and execute Gradle wrapper build tasks.
+- `python -m modsmith clean` (or `modsmith_cli clean`) — Delete the generated mod projects directory.
+- `python -m modsmith template list` (or `modsmith_cli template list`) — Scan and verify all available mod templates under `MODTEMPLATES`.
+- `python -m modsmith home <SUBCOMMAND>` (or `modsmith_cli home <SUBCOMMAND>`) — Manage your ModSmith home directory and workspaces persistently (show, set, unset, open).
 
 > [!WARNING]
 > The folders `MODTEMPLATES/`, `WORKSPACE/`, and `MODS/` represent local/user-managed files and compiled build artifacts. These folders are **gitignored** in active source repositories. Do not commit templates, private credentials, or binary outputs to your main project repository.

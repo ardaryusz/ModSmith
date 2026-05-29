@@ -13,16 +13,16 @@ graph TD
     C --> D[clean]
 ```
 
-1. **`modsmith validate`**
+1. **`modsmith_cli validate`** (or **`python -m modsmith validate`** when running from source)
    Validates the structure of your templates, syntax of your recipes, schema of `modsmith.json`, and ensures development tools like Git are available on your system path.
    
-2. **`modsmith generate`**
+2. **`modsmith_cli generate`** (or **`python -m modsmith generate`** when running from source)
    Translates your recipes, parses metadata, configures build environments, and generates the mod repository files in the `MODS/` directory.
 
-3. **`modsmith build`**
+3. **`modsmith_cli build`** (or **`python -m modsmith build`** when running from source)
    Runs the Gradle wrappers in the generated directories to compile the targets, producing final mod `.jar` files in `WORKSPACE/DIST/`.
 
-4. **`modsmith clean`**
+4. **`modsmith_cli clean`** (or **`python -m modsmith clean`** when running from source)
    Recursively cleans the generated mod repository directories.
 
 ---
@@ -70,7 +70,7 @@ Download standard Fabric, Forge, or NeoForge MDKs, unzip them, and place them in
 
 Each template folder needs a `modsmith-template.json` descriptor. The easiest way to create one is via the GUI **Templates** screen → select the template → click **Create Descriptor** (see [templates.md](templates.md#creating-and-editing-the-descriptor-via-gui)). The form infers the loader, version, and recipe format from the folder name automatically.
 
-You can verify that all your templates are valid and ready to use by running `modsmith template list`.
+You can verify that all your templates are valid and ready to use by running `modsmith_cli template list` (or `python -m modsmith template list`).
 
 ### Step 3: Define Mod Configuration
 Create `WORKSPACE/DETAILS/modsmith.json`:
@@ -115,11 +115,18 @@ Place a recipe file inside `WORKSPACE/RECIPES/gunpowder.json`:
 ```
 
 ### Step 5: Validate, Generate, and Build
-Now run the workflow commands:
+Now run the workflow commands. If you are using the installed app:
 ```bash
-modsmith validate
-modsmith generate
-modsmith build
+modsmith_cli validate
+modsmith_cli generate
+modsmith_cli build
+```
+
+If you are running from source:
+```bash
+python -m modsmith validate
+python -m modsmith generate
+python -m modsmith build
 ```
 
 ---
@@ -135,7 +142,7 @@ During the `generate` phase, ModSmith initializes a local Git repository inside 
 
 ## DIST Output
 
-After running `modsmith build`, the compiled binary outputs are retrieved from the build directory of each target branch and copied to your `WORKSPACE/DIST/` folder. They follow this naming convention:
+After running the `build` command (`modsmith_cli build` or `python -m modsmith build`), the compiled binary outputs are retrieved from the build directory of each target branch and copied to your `WORKSPACE/DIST/` folder. They follow this naming convention:
 ```
 <mod_id>-<mc_version_label>-<loader>-<mod_version>.jar
 ```
@@ -148,6 +155,15 @@ For example: `easypeasygunpowder-1.20.1-forge-1.1.0.jar`
 ## Working with the GUI
 
 ModSmith includes a clean, simple, and native desktop GUI for managing your workspace configuration, templates, recipes, and documentation.
+
+### Launching the GUI
+
+* **Installed:** Open **ModSmith** from the Start Menu (the installer creates a shortcut, which runs `modsmith.exe`).
+* **From source:** Install GUI dependencies with `pip install -e ".[dev,gui]"`, then run:
+  ```bash
+  python -m modsmith_gui
+  ```
+* The CLI (`modsmith_cli.exe`) is still available in the same install directory and on PATH for terminal workflows.
 
 ### Workspace Config Editor
 Under the **Workspace** tab, you can view and edit your active `modsmith.json` configuration inside standard native fields:

@@ -2,7 +2,7 @@
 ; ModSmith Windows Installer — NSIS Script
 ; ==========================================================================
 ;
-; Installs modsmith.exe to Program Files and creates a user-writable
+; Installs modsmith.exe and modsmith_cli.exe to Program Files and creates a user-writable
 ; workspace under Documents\ModSmith.
 ;
 ; Build:
@@ -157,6 +157,7 @@ Section "!ModSmith Core (required)" SEC_CORE
     CreateDirectory "$UserDataDir\WORKSPACE\README"
     CreateDirectory "$UserDataDir\WORKSPACE\DETAILS"
     CreateDirectory "$UserDataDir\WORKSPACE\DIST"
+    CreateDirectory "$UserDataDir\WORKSPACE\ASSETS"
     CreateDirectory "$UserDataDir\MODS"
 
     ; --- Install sample files ---
@@ -235,17 +236,21 @@ Section "Add to PATH" SEC_PATH
 SectionEnd
 
 
-Section "Start Menu Shortcut" SEC_STARTMENU
-    ; Create a "ModSmith Command Prompt" shortcut that opens PowerShell
-    ; in the user's workspace directory
+Section "Start Menu Shortcuts" SEC_STARTMENU
+    ; Create Start Menu shortcuts for the GUI, CLI terminal, and uninstaller
     StrCpy $UserDataDir "$DOCUMENTS\${PRODUCT_NAME}"
     CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
 
-    ; PowerShell shortcut opening in the user data directory using the modsmith.exe icon
+    ; GUI shortcut — primary user-facing entry point
+    CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\ModSmith.lnk" \
+        "$INSTDIR\modsmith.exe" "" \
+        "$INSTDIR\modsmith.exe" 0
+
+    ; PowerShell shortcut opening in the user data directory
     CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\ModSmith Command Prompt.lnk" \
         "powershell.exe" \
-        "-NoExit -Command $\"Set-Location '$UserDataDir'; Write-Host 'ModSmith Workspace: $UserDataDir' -ForegroundColor Cyan; Write-Host 'Run: modsmith --help' -ForegroundColor Yellow$\"" \
-        "$INSTDIR\modsmith.exe" 0 "" "" "Open PowerShell in ModSmith workspace"
+        "-NoExit -Command $\"Set-Location '$UserDataDir'; Write-Host 'ModSmith Workspace: $UserDataDir' -ForegroundColor Cyan; Write-Host 'Run: modsmith_cli --help' -ForegroundColor Yellow$\"" \
+        "$INSTDIR\modsmith_cli.exe" 0 "" "" "Open PowerShell in ModSmith workspace"
 
     CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall ModSmith.lnk" \
         "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
@@ -258,11 +263,11 @@ SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
     !insertmacro MUI_DESCRIPTION_TEXT ${SEC_CORE} \
-        "Install ModSmith executable and create workspace folders under Documents."
+        "Install ModSmith CLI and GUI executables and create workspace folders."
     !insertmacro MUI_DESCRIPTION_TEXT ${SEC_PATH} \
         "Add the installation directory to your PATH so you can run modsmith from any terminal."
     !insertmacro MUI_DESCRIPTION_TEXT ${SEC_STARTMENU} \
-        "Create a Start Menu shortcut that opens PowerShell in your ModSmith workspace."
+        "Create Start Menu shortcuts for the ModSmith GUI and a command-line terminal."
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 
