@@ -6,6 +6,13 @@
     Cleans previous build artifacts, runs PyInstaller against modsmith.spec,
     verifies both executables exist, and runs quick smoke tests.
 
+    Cleanup is hardened against Windows file locks:
+      - Any packaged ModSmith processes whose path is under dist/ are stopped first.
+      - Removal retries up to 5 times (1 s sleep) before failing clearly.
+
+    The windowed GUI smoke test (modsmith.exe --version) is run with a 10-second
+    timeout; the process is killed if it does not exit in time.
+
 .NOTES
     Prerequisites:
       - Python 3.10+ on PATH
@@ -25,19 +32,81 @@ if (-not (Test-Path "$ProjectRoot\modsmith.spec")) {
     }
 }
 
+# ---------------------------------------------------------------------------
+# Helper: stop any packaged ModSmith processes whose executable lives under
+# the project dist directory.  Avoids killing unrelated system processes.
+# ---------------------------------------------------------------------------
+function Stop-ModSmithProcesses {
+    param([string]$DistRoot)
+
+    $names = @("modsmith", "modsmith_cli")
+    foreach ($name in $names) {
+        $procs = Get-Process -Name $name -ErrorAction SilentlyContinue
+        foreach ($proc in $procs) {
+            $procPath = ""
+            try { $procPath = $proc.Path } catch { }
+            if ($procPath -and $procPath.StartsWith($DistRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+                Write-Host "  Stopping locked process: $name (PID $($proc.Id)) at $procPath" -ForegroundColor Yellow
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    # Give the OS a moment to release file handles
+    Start-Sleep -Milliseconds 500
+}
+
+# ---------------------------------------------------------------------------
+# Helper: remove a directory with up to $MaxTries retries on lock errors.
+# ---------------------------------------------------------------------------
+function Remove-WithRetry {
+    param(
+        [string]$Path,
+        [int]$MaxTries = 5,
+        [int]$SleepSec = 1
+    )
+
+    for ($i = 1; $i -le $MaxTries; $i++) {
+        try {
+            Remove-Item -Recurse -Force $Path -ErrorAction Stop
+            return  # success
+        } catch {
+            if ($i -lt $MaxTries) {
+                Write-Host "  Removal attempt $i/$MaxTries failed (locked?), retrying in ${SleepSec}s..." -ForegroundColor Yellow
+                [GC]::Collect()
+                [GC]::WaitForPendingFinalizers()
+                Start-Sleep -Seconds $SleepSec
+            } else {
+                Write-Host ""
+                Write-Host "ERROR: Could not clean '$Path' because files are still locked." -ForegroundColor Red
+                Write-Host "  Close ModSmith GUI and any terminals using dist/, then retry." -ForegroundColor Red
+                Write-Host "  Last error: $($_.Exception.Message)" -ForegroundColor Red
+                throw  # re-throw so $ErrorActionPreference = Stop propagates
+            }
+        }
+    }
+}
+
 Push-Location $ProjectRoot
 try {
     Write-Host "=== ModSmith Build Script ===" -ForegroundColor Cyan
     Write-Host "Project root: $ProjectRoot"
 
-    # --- Clean previous artifacts ---
+    # --- Kill any running ModSmith dist processes before cleaning ---
+    $distRoot = Join-Path $ProjectRoot "dist\ModSmith"
+    if (Test-Path $distRoot) {
+        Write-Host ""
+        Write-Host "[0/5] Stopping any running ModSmith dist processes..." -ForegroundColor Yellow
+        Stop-ModSmithProcesses -DistRoot $distRoot
+    }
+
+    # --- Clean previous artifacts (with retry) ---
     Write-Host ""
     Write-Host "[1/5] Cleaning previous build artifacts..." -ForegroundColor Yellow
     foreach ($dir in @("build", "dist")) {
         $path = Join-Path $ProjectRoot $dir
         if (Test-Path $path) {
             Write-Host "  Removing $path"
-            Remove-Item -Recurse -Force $path
+            Remove-WithRetry -Path $path
         }
     }
 
@@ -95,6 +164,7 @@ try {
     Write-Host ""
     Write-Host "[5/5] Smoke tests..." -ForegroundColor Yellow
 
+    # CLI smoke test - console exe, straightforward
     Write-Host "  CLI: modsmith_cli.exe --version"
     & $cliExePath --version
     if ($LASTEXITCODE -ne 0) {
@@ -102,12 +172,29 @@ try {
         exit 1
     }
 
-    Write-Host "  GUI: modsmith.exe --version"
-    & $guiExePath --version
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "GUI smoke test failed with exit code $LASTEXITCODE"
+    # GUI smoke test - windowed exe (console=False); must not stay resident.
+    # Run via Start-Process with a 10-second timeout; kill if it hangs.
+    Write-Host "  GUI: modsmith.exe --version (timeout 10s)"
+    $guiStartArgs = @{
+        FilePath     = $guiExePath
+        ArgumentList = "--version"
+        PassThru     = $true
+        WindowStyle  = "Hidden"
+        ErrorAction  = "Stop"
+    }
+    $guiJob = Start-Process @guiStartArgs
+    $exited = $guiJob.WaitForExit(10000)
+    if (-not $exited) {
+        Write-Host "  GUI process did not exit within 10 seconds - killing it." -ForegroundColor Yellow
+        Stop-Process -Id $guiJob.Id -Force -ErrorAction SilentlyContinue
+        Write-Error "GUI smoke test timed out (modsmith.exe --version did not exit within 10s)"
         exit 1
     }
+    if ($guiJob.ExitCode -ne 0) {
+        Write-Error "GUI smoke test failed: modsmith.exe --version exited with code $($guiJob.ExitCode)"
+        exit 1
+    }
+    Write-Host "  GUI process exited cleanly (exit code 0)"
 
     Write-Host ""
     Write-Host "=== Build successful! ===" -ForegroundColor Green
