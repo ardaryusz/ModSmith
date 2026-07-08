@@ -14,9 +14,16 @@ import re
 
 KNOWN_LOADERS = ("forge", "fabric", "neoforge")
 
-# Recipe format names (must match backend TemplateDescriptor schema)
-RECIPE_FORMAT_LEGACY = "legacy_1_20"
-RECIPE_FORMAT_MODERN = "modern_1_21"
+RECIPE_FORMAT_LEGACY = "legacy_pre_1_20_5"
+RECIPE_FORMAT_TRANSITIONAL = "transitional_1_20_5_to_1_21_1"
+RECIPE_FORMAT_MODERN = "modern_1_21_2_plus"
+
+RECIPE_FORMAT_DISPLAY_TO_STORED = {
+    "Legacy (<= 1.20.4)": "legacy_pre_1_20_5",
+    "Transitional (1.20.5 - 1.21.1)": "transitional_1_20_5_to_1_21_1",
+    "Modern (>= 1.21.2)": "modern_1_21_2_plus",
+}
+RECIPE_FORMAT_STORED_TO_DISPLAY = {v: k for k, v in RECIPE_FORMAT_DISPLAY_TO_STORED.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -24,37 +31,69 @@ RECIPE_FORMAT_MODERN = "modern_1_21"
 # ---------------------------------------------------------------------------
 
 
+def parse_version(version_str: str) -> tuple[int, int, int]:
+    """Parse minecraft version string into (major, minor, patch) tuple."""
+    if not version_str:
+        return 1, 21, 2
+    parts = version_str.strip().split(".")
+    try:
+        major = int(parts[0]) if len(parts) >= 1 else 1
+        minor = int(parts[1]) if len(parts) >= 2 else 0
+        patch = int(parts[2]) if len(parts) >= 3 else 0
+        return major, minor, patch
+    except (ValueError, IndexError):
+        return 1, 21, 2
+
+
 def recipe_format_for_minecraft_version(version: str) -> str:
     """Return the recommended recipe format string for *version*.
 
     Rules:
-    - ``1.21`` or higher → ``"modern_1_21"``
-    - ``1.20.x`` or lower → ``"legacy_1_20"``
-    - Unparseable or empty → ``"modern_1_21"`` (safe default)
-
-    Parameters
-    ----------
-    version:
-        A dotted Minecraft version string such as ``"1.20.1"`` or ``"1.21.4"``.
-
-    Returns
-    -------
-    str
-        One of ``RECIPE_FORMAT_MODERN`` or ``RECIPE_FORMAT_LEGACY``.
+    - <= 1.20.4 -> "legacy_pre_1_20_5"
+    - 1.20.5 - 1.21.1 -> "transitional_1_20_5_to_1_21_1"
+    - >= 1.21.2 -> "modern_1_21_2_plus"
     """
     if not version:
         return RECIPE_FORMAT_MODERN
 
-    parts = version.strip().split(".")
-    try:
-        major = int(parts[0]) if parts else 1
-        minor = int(parts[1]) if len(parts) > 1 else 0
-    except (ValueError, IndexError):
+    major, minor, patch = parse_version(version)
+    if major < 1 or (major == 1 and minor < 20) or (major == 1 and minor == 20 and patch <= 4):
+        return RECIPE_FORMAT_LEGACY
+    elif major == 1 and minor == 20:  # 1.20.5, 1.20.6
+        return RECIPE_FORMAT_TRANSITIONAL
+    elif major == 1 and minor == 21 and patch <= 1:  # 1.21, 1.21.1
+        return RECIPE_FORMAT_TRANSITIONAL
+    else:  # >= 1.21.2
         return RECIPE_FORMAT_MODERN
 
-    if major > 1 or (major == 1 and minor >= 21):
-        return RECIPE_FORMAT_MODERN
-    return RECIPE_FORMAT_LEGACY
+
+def resolve_recipe_format_string(raw_format: str, mc_version: str) -> str:
+    """Resolve raw format string (with backward compatibility) to the new stored name."""
+    if not raw_format:
+        return recipe_format_for_minecraft_version(mc_version)
+    
+    if raw_format == "legacy_1_20":
+        if not mc_version:
+            return RECIPE_FORMAT_LEGACY
+        major, minor, patch = parse_version(mc_version)
+        if major < 1 or (major == 1 and minor < 20) or (major == 1 and minor == 20 and patch <= 4):
+            return RECIPE_FORMAT_LEGACY
+        else:
+            return RECIPE_FORMAT_TRANSITIONAL
+    elif raw_format == "modern_1_21":
+        if not mc_version:
+            return RECIPE_FORMAT_MODERN
+        major, minor, patch = parse_version(mc_version)
+        if major == 1 and minor == 21 and patch <= 1:
+            return RECIPE_FORMAT_TRANSITIONAL
+        elif major > 1 or (major == 1 and minor > 21) or (major == 1 and minor == 21 and patch >= 2):
+            return RECIPE_FORMAT_MODERN
+        else:
+            return RECIPE_FORMAT_TRANSITIONAL
+
+    if raw_format in (RECIPE_FORMAT_LEGACY, RECIPE_FORMAT_TRANSITIONAL, RECIPE_FORMAT_MODERN):
+        return raw_format
+    return recipe_format_for_minecraft_version(mc_version)
 
 
 def recipe_folder_for_minecraft_version(version: str) -> str:

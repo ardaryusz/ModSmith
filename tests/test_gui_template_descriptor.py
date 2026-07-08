@@ -25,6 +25,7 @@ from modsmith_gui.template_descriptor_utils import (
     infer_template_descriptor_defaults,
     recipe_format_for_minecraft_version,
     RECIPE_FORMAT_LEGACY,
+    RECIPE_FORMAT_TRANSITIONAL,
     RECIPE_FORMAT_MODERN,
 )
 
@@ -42,10 +43,10 @@ class TestRecipeFormatHelper:
         assert recipe_format_for_minecraft_version("1.20.4") == RECIPE_FORMAT_LEGACY
 
     def test_1_21_is_modern(self):
-        assert recipe_format_for_minecraft_version("1.21") == RECIPE_FORMAT_MODERN
+        assert recipe_format_for_minecraft_version("1.21") == RECIPE_FORMAT_TRANSITIONAL
 
     def test_1_21_1_is_modern(self):
-        assert recipe_format_for_minecraft_version("1.21.1") == RECIPE_FORMAT_MODERN
+        assert recipe_format_for_minecraft_version("1.21.1") == RECIPE_FORMAT_TRANSITIONAL
 
     def test_1_21_4_is_modern(self):
         assert recipe_format_for_minecraft_version("1.21.4") == RECIPE_FORMAT_MODERN
@@ -77,7 +78,7 @@ class TestInferDefaults:
         d = self._infer("forge-1.21.1")
         assert d["loader"] == "forge"
         assert d["minecraft_version"] == "1.21.1"
-        assert d["recipe_format"] == RECIPE_FORMAT_MODERN
+        assert d["recipe_format"] == RECIPE_FORMAT_TRANSITIONAL
         assert d["jar_loader_suffix"] == "forge"
 
     def test_forge_uppercase_case_insensitive(self):
@@ -92,7 +93,7 @@ class TestInferDefaults:
         d = self._infer("fabric-1.21.1")
         assert d["loader"] == "fabric"
         assert d["minecraft_version"] == "1.21.1"
-        assert d["recipe_format"] == RECIPE_FORMAT_MODERN
+        assert d["recipe_format"] == RECIPE_FORMAT_TRANSITIONAL
         assert d["jar_loader_suffix"] == "fabric"
 
     def test_fabric_1_20_1(self):
@@ -106,7 +107,7 @@ class TestInferDefaults:
         d = self._infer("neoforge-1.21.1")
         assert d["loader"] == "neoforge"
         assert d["minecraft_version"] == "1.21.1"
-        assert d["recipe_format"] == RECIPE_FORMAT_MODERN
+        assert d["recipe_format"] == RECIPE_FORMAT_TRANSITIONAL
         assert d["jar_loader_suffix"] == "neoforge"
 
     def test_neoforge_1_21_4(self):
@@ -244,18 +245,18 @@ class TestDescriptorDialog:
         assert dlg._txt_mc_version.text() == "1.21.4"
 
     def test_inferred_modern_recipe_format(self, qt_app, tmp_path):
-        """1.21.x templates should default to modern_1_21 recipe format."""
-        tpl = tmp_path / "fabric-1.21.1"
+        """1.21.2+ templates should default to modern recipe format."""
+        tpl = tmp_path / "fabric-1.21.2"
         tpl.mkdir()
         dlg = TemplateDescriptorDialog(template_path=tpl)
-        assert dlg._cmb_recipe_format.currentText() == RECIPE_FORMAT_MODERN
+        assert dlg._cmb_recipe_format.currentText() == "Modern (>= 1.21.2)"
 
     def test_inferred_legacy_recipe_format(self, qt_app, tmp_path):
         """1.20.x templates should default to legacy_1_20 recipe format."""
         tpl = tmp_path / "forge-1.20.1"
         tpl.mkdir()
         dlg = TemplateDescriptorDialog(template_path=tpl)
-        assert dlg._cmb_recipe_format.currentText() == RECIPE_FORMAT_LEGACY
+        assert dlg._cmb_recipe_format.currentText() == "Legacy (<= 1.20.4)"
 
     def test_existing_values_loaded(self, qt_app, tmp_path):
         """Editing an existing descriptor should populate all form fields."""
@@ -274,7 +275,7 @@ class TestDescriptorDialog:
         dlg = TemplateDescriptorDialog(template_path=tpl)
         assert dlg._cmb_loader.currentText() == "neoforge"
         assert dlg._txt_mc_version.text() == "1.21.2"
-        assert dlg._cmb_recipe_format.currentText() == "modern_1_21"
+        assert dlg._cmb_recipe_format.currentText() == "Modern (>= 1.21.2)"
         assert dlg._cmb_recipe_folder.currentText() == "recipe"
         assert dlg._txt_jar_suffix.text() == "neoforge-custom"
 
@@ -300,14 +301,14 @@ class TestDescriptorDialog:
         tpl = tmp_path / "forge-1.20.1"
         tpl.mkdir()
         dlg = TemplateDescriptorDialog(template_path=tpl)
-        assert dlg._cmb_recipe_format.currentText() == RECIPE_FORMAT_LEGACY
+        assert dlg._cmb_recipe_format.currentText() == "Legacy (<= 1.20.4)"
         assert dlg._cmb_recipe_folder.currentText() == "recipes"
 
-        # Change version to a 1.21 version and trigger editing finished
+        # Change version to a 1.21.4 version and trigger editing finished
         dlg._txt_mc_version.setText("1.21.4")
         dlg._on_mc_version_editing_finished()
 
-        assert dlg._cmb_recipe_format.currentText() == RECIPE_FORMAT_MODERN
+        assert dlg._cmb_recipe_format.currentText() == "Modern (>= 1.21.2)"
         assert dlg._cmb_recipe_folder.currentText() == "recipe"
 
     def test_descriptor_path_property(self, qt_app, tmp_path):
@@ -388,7 +389,7 @@ class TestDescriptorDialogSave:
         assert desc is not None
         assert desc.loader == "neoforge"
         assert desc.minecraft_version == "1.21.1"
-        assert desc.recipe_format == RECIPE_FORMAT_MODERN
+        assert desc.recipe_format == "transitional_1_20_5_to_1_21_1"
 
     def test_validation_blocks_empty_minecraft_version(self, qt_app, tmp_path, monkeypatch):
         """Save with blank Minecraft Version should be blocked (warning shown)."""

@@ -41,8 +41,66 @@ from typing import Any
 class RecipeFormat(Enum):
     """Recognised Minecraft recipe JSON formats."""
 
-    LEGACY_1_20 = "legacy_1_20"
-    MODERN_1_21 = "modern_1_21"
+    LEGACY_PRE_1_20_5 = "legacy_pre_1_20_5"
+    TRANSITIONAL_1_20_5_TO_1_21_1 = "transitional_1_20_5_to_1_21_1"
+    MODERN_1_21_2_PLUS = "modern_1_21_2_plus"
+
+
+def parse_version(version_str: str) -> tuple[int, int, int]:
+    """Parse minecraft version string into (major, minor, patch) tuple."""
+    if not version_str:
+        return 1, 21, 2
+    parts = version_str.strip().split(".")
+    try:
+        major = int(parts[0]) if len(parts) >= 1 else 1
+        minor = int(parts[1]) if len(parts) >= 2 else 0
+        patch = int(parts[2]) if len(parts) >= 3 else 0
+        return major, minor, patch
+    except (ValueError, IndexError):
+        return 1, 21, 2
+
+
+def infer_format_from_version(version: str) -> RecipeFormat:
+    """Infer target recipe format based on minecraft version."""
+    major, minor, patch = parse_version(version)
+    if major < 1 or (major == 1 and minor < 20) or (major == 1 and minor == 20 and patch <= 4):
+        return RecipeFormat.LEGACY_PRE_1_20_5
+    elif major == 1 and minor == 20:  # 1.20.5, 1.20.6
+        return RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1
+    elif major == 1 and minor == 21 and patch <= 1:  # 1.21, 1.21.1
+        return RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1
+    else:  # >= 1.21.2
+        return RecipeFormat.MODERN_1_21_2_PLUS
+
+
+def resolve_recipe_format(descriptor_format: str | None, minecraft_version: str) -> RecipeFormat:
+    """Resolve RecipeFormat from descriptor string (supporting backward compatibility) and MC version."""
+    if not descriptor_format:
+        return infer_format_from_version(minecraft_version)
+
+    if descriptor_format == "legacy_1_20":
+        if not minecraft_version:
+            return RecipeFormat.LEGACY_PRE_1_20_5
+        major, minor, patch = parse_version(minecraft_version)
+        if major < 1 or (major == 1 and minor < 20) or (major == 1 and minor == 20 and patch <= 4):
+            return RecipeFormat.LEGACY_PRE_1_20_5
+        else:
+            return RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1
+    elif descriptor_format == "modern_1_21":
+        if not minecraft_version:
+            return RecipeFormat.MODERN_1_21_2_PLUS
+        major, minor, patch = parse_version(minecraft_version)
+        if major == 1 and minor == 21 and patch <= 1:
+            return RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1
+        elif major > 1 or (major == 1 and minor > 21) or (major == 1 and minor == 21 and patch >= 2):
+            return RecipeFormat.MODERN_1_21_2_PLUS
+        else:
+            return RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1
+
+    try:
+        return RecipeFormat(descriptor_format)
+    except ValueError:
+        return infer_format_from_version(minecraft_version)
 
 
 class RecipeError(Exception):
@@ -63,24 +121,42 @@ _SHAPELESS = "minecraft:crafting_shapeless"
 
 
 def detect_format(recipe_dict: dict[str, Any]) -> RecipeFormat:
-    """Infer whether *recipe_dict* uses the legacy 1.20 or modern 1.21 format.
+    """Infer which format *recipe_dict* uses.
 
     Detection priority (first definitive signal wins):
 
-    1. ``result.id``   → modern
+    1. ``result.id``   → modern or transitional
     2. ``result.item`` → legacy
     3. Shaped key contains a string value → modern
-    4. Shaped key contains a simple ``{"item": …}``-only object value → legacy
+    4. Shaped key contains a simple ``{"item": …}``-only object value → legacy or transitional
     5. Shapeless ingredients contain a string entry → modern
-    6. Shapeless ingredients contain a ``{"item": …}``-only object entry → legacy
-    7. Ambiguous → modern (new workspaces default to modern)
+    6. Shapeless ingredients contain a ``{"item": …}``-only entry → legacy or transitional
+    7. Ambiguous → modern
     """
     result = recipe_dict.get("result")
     if isinstance(result, dict):
         if "id" in result:
-            return RecipeFormat.MODERN_1_21
+            # Could be modern or transitional. Check keys/ingredients first.
+            recipe_type = recipe_dict.get("type", "")
+            if recipe_type == _SHAPED:
+                key = recipe_dict.get("key", {})
+                if isinstance(key, dict):
+                    for v in key.values():
+                        if isinstance(v, str):
+                            return RecipeFormat.MODERN_1_21_2_PLUS
+                        if isinstance(v, dict) and set(v.keys()) == {"item"}:
+                            return RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1
+            elif recipe_type == _SHAPELESS:
+                ingredients = recipe_dict.get("ingredients", [])
+                if isinstance(ingredients, list):
+                    for ing in ingredients:
+                        if isinstance(ing, str):
+                            return RecipeFormat.MODERN_1_21_2_PLUS
+                        if isinstance(ing, dict) and set(ing.keys()) == {"item"}:
+                            return RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1
+            return RecipeFormat.MODERN_1_21_2_PLUS
         if "item" in result:
-            return RecipeFormat.LEGACY_1_20
+            return RecipeFormat.LEGACY_PRE_1_20_5
 
     recipe_type = recipe_dict.get("type", "")
 
@@ -89,21 +165,21 @@ def detect_format(recipe_dict: dict[str, Any]) -> RecipeFormat:
         if isinstance(key, dict):
             for v in key.values():
                 if isinstance(v, str):
-                    return RecipeFormat.MODERN_1_21
+                    return RecipeFormat.MODERN_1_21_2_PLUS
                 if isinstance(v, dict) and set(v.keys()) == {"item"}:
-                    return RecipeFormat.LEGACY_1_20
+                    return RecipeFormat.LEGACY_PRE_1_20_5
 
     if recipe_type == _SHAPELESS:
         ingredients = recipe_dict.get("ingredients", [])
         if isinstance(ingredients, list):
             for ing in ingredients:
                 if isinstance(ing, str):
-                    return RecipeFormat.MODERN_1_21
+                    return RecipeFormat.MODERN_1_21_2_PLUS
                 if isinstance(ing, dict) and set(ing.keys()) == {"item"}:
-                    return RecipeFormat.LEGACY_1_20
+                    return RecipeFormat.LEGACY_PRE_1_20_5
 
     # Ambiguous — default to modern.
-    return RecipeFormat.MODERN_1_21
+    return RecipeFormat.MODERN_1_21_2_PLUS
 
 
 # ---------------------------------------------------------------------------
@@ -169,17 +245,10 @@ def _result_to_legacy(result: Any) -> Any:
 
 
 def convert_to_modern(recipe_dict: dict[str, Any]) -> dict[str, Any]:
-    """Return a deep copy of *recipe_dict* converted to the 1.21 modern format.
-
-    - Shaped key values: ``{"item": "..."}`` → ``"..."``
-    - Shapeless ingredient objects: ``{"item": "..."}`` → ``"..."``
-    - Result: ``result.item`` → ``result.id``
-    - Tags, complex objects, and unknown fields are preserved.
-    """
+    """Return a deep copy of *recipe_dict* converted to the modern format."""
     out: dict[str, Any] = copy.deepcopy(recipe_dict)
     recipe_type = out.get("type", "")
 
-    # result
     if "result" in out:
         out["result"] = _result_to_modern(out["result"])
 
@@ -193,22 +262,14 @@ def convert_to_modern(recipe_dict: dict[str, Any]) -> dict[str, Any]:
         if isinstance(ingredients, list):
             out["ingredients"] = [_ingredient_to_modern(i) for i in ingredients]
 
-    # For other recipe types: only result was converted (done above).
     return out
 
 
 def convert_to_legacy(recipe_dict: dict[str, Any]) -> dict[str, Any]:
-    """Return a deep copy of *recipe_dict* converted to the 1.20 legacy format.
-
-    - Shaped key values: ``"..."`` → ``{"item": "..."}``
-    - Shapeless ingredient strings: ``"..."`` → ``{"item": "..."}``
-    - Result: ``result.id`` → ``result.item``
-    - Tags, complex objects, and unknown fields are preserved.
-    """
+    """Return a deep copy of *recipe_dict* converted to the legacy format."""
     out: dict[str, Any] = copy.deepcopy(recipe_dict)
     recipe_type = out.get("type", "")
 
-    # result
     if "result" in out:
         out["result"] = _result_to_legacy(out["result"])
 
@@ -222,7 +283,28 @@ def convert_to_legacy(recipe_dict: dict[str, Any]) -> dict[str, Any]:
         if isinstance(ingredients, list):
             out["ingredients"] = [_ingredient_to_legacy(i) for i in ingredients]
 
-    # For other recipe types: only result was converted (done above).
+    return out
+
+
+def convert_to_transitional(recipe_dict: dict[str, Any]) -> dict[str, Any]:
+    """Return a deep copy of *recipe_dict* converted to the transitional format."""
+    out: dict[str, Any] = copy.deepcopy(recipe_dict)
+    recipe_type = out.get("type", "")
+
+    # result
+    if "result" in out:
+        out["result"] = _result_to_modern(out["result"])
+
+    if recipe_type == _SHAPED:
+        key = out.get("key")
+        if isinstance(key, dict):
+            out["key"] = {k: _ingredient_to_legacy(v) for k, v in key.items()}
+
+    elif recipe_type == _SHAPELESS:
+        ingredients = out.get("ingredients")
+        if isinstance(ingredients, list):
+            out["ingredients"] = [_ingredient_to_legacy(i) for i in ingredients]
+
     return out
 
 
@@ -230,14 +312,12 @@ def convert_recipe(
     recipe_dict: dict[str, Any],
     target_format: RecipeFormat,
 ) -> dict[str, Any]:
-    """Dispatch to the appropriate converter based on *target_format*.
-
-    Returns an unconverted deep copy when no conversion is needed
-    (i.e. the recipe is already in the target format).
-    """
-    if target_format == RecipeFormat.MODERN_1_21:
-        return convert_to_modern(recipe_dict)
-    return convert_to_legacy(recipe_dict)
+    """Dispatch to the appropriate converter based on *target_format*."""
+    if target_format == RecipeFormat.LEGACY_PRE_1_20_5:
+        return convert_to_legacy(recipe_dict)
+    elif target_format == RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1:
+        return convert_to_transitional(recipe_dict)
+    return convert_to_modern(recipe_dict)
 
 
 # ---------------------------------------------------------------------------

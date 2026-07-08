@@ -33,9 +33,11 @@ from modsmith.recipes import (
     convert_recipe,
     convert_to_legacy,
     convert_to_modern,
+    convert_to_transitional,
     detect_format,
     load_recipes,
     write_recipes,
+    resolve_recipe_format,
 )
 
 # ---------------------------------------------------------------------------
@@ -152,39 +154,39 @@ class TestDetectFormat(unittest.TestCase):
     """detect_format identifies the format from recipe content."""
 
     def test_detect_legacy_shaped(self):
-        self.assertEqual(detect_format(LEGACY_SHAPED), RecipeFormat.LEGACY_1_20)
+        self.assertEqual(detect_format(LEGACY_SHAPED), RecipeFormat.LEGACY_PRE_1_20_5)
 
     def test_detect_modern_shaped(self):
-        self.assertEqual(detect_format(MODERN_SHAPED), RecipeFormat.MODERN_1_21)
+        self.assertEqual(detect_format(MODERN_SHAPED), RecipeFormat.MODERN_1_21_2_PLUS)
 
     def test_detect_legacy_shapeless(self):
-        self.assertEqual(detect_format(LEGACY_SHAPELESS), RecipeFormat.LEGACY_1_20)
+        self.assertEqual(detect_format(LEGACY_SHAPELESS), RecipeFormat.LEGACY_PRE_1_20_5)
 
     def test_detect_modern_shapeless(self):
-        self.assertEqual(detect_format(MODERN_SHAPELESS), RecipeFormat.MODERN_1_21)
+        self.assertEqual(detect_format(MODERN_SHAPELESS), RecipeFormat.MODERN_1_21_2_PLUS)
 
     def test_detect_via_result_id(self):
         """result.id is the most reliable modern signal."""
         recipe = {"type": "minecraft:smelting", "result": {"id": "minecraft:iron_ingot"}}
-        self.assertEqual(detect_format(recipe), RecipeFormat.MODERN_1_21)
+        self.assertEqual(detect_format(recipe), RecipeFormat.MODERN_1_21_2_PLUS)
 
     def test_detect_via_result_item(self):
         """result.item is the legacy signal."""
         recipe = {"type": "minecraft:smelting", "result": {"item": "minecraft:iron_ingot"}}
-        self.assertEqual(detect_format(recipe), RecipeFormat.LEGACY_1_20)
+        self.assertEqual(detect_format(recipe), RecipeFormat.LEGACY_PRE_1_20_5)
 
     def test_ambiguous_defaults_to_modern(self):
         """A recipe with no detectable signals should default to modern."""
         recipe = {"type": "minecraft:crafting_shaped", "pattern": [], "key": {}}
-        self.assertEqual(detect_format(recipe), RecipeFormat.MODERN_1_21)
+        self.assertEqual(detect_format(recipe), RecipeFormat.MODERN_1_21_2_PLUS)
 
     def test_detect_modern_from_fixture_file(self):
         data = json.loads((_FIXTURES / "modern_recipe.json").read_text())
-        self.assertEqual(detect_format(data), RecipeFormat.MODERN_1_21)
+        self.assertEqual(detect_format(data), RecipeFormat.MODERN_1_21_2_PLUS)
 
     def test_detect_legacy_from_fixture_file(self):
         data = json.loads((_FIXTURES / "legacy_recipe.json").read_text())
-        self.assertEqual(detect_format(data), RecipeFormat.LEGACY_1_20)
+        self.assertEqual(detect_format(data), RecipeFormat.LEGACY_PRE_1_20_5)
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +218,7 @@ class TestConvertToModernShaped(unittest.TestCase):
         self.assertEqual(self.result["result"]["count"], 1)
 
     def test_detect_format_of_output_is_modern(self):
-        self.assertEqual(detect_format(self.result), RecipeFormat.MODERN_1_21)
+        self.assertEqual(detect_format(self.result), RecipeFormat.MODERN_1_21_2_PLUS)
 
 
 # ---------------------------------------------------------------------------
@@ -248,7 +250,7 @@ class TestConvertToLegacyShaped(unittest.TestCase):
         self.assertEqual(self.result["result"]["count"], 1)
 
     def test_detect_format_of_output_is_legacy(self):
-        self.assertEqual(detect_format(self.result), RecipeFormat.LEGACY_1_20)
+        self.assertEqual(detect_format(self.result), RecipeFormat.LEGACY_PRE_1_20_5)
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +282,7 @@ class TestConvertToModernShapeless(unittest.TestCase):
         self.assertEqual(self.result["result"]["count"], 3)
 
     def test_detect_format_of_output_is_modern(self):
-        self.assertEqual(detect_format(self.result), RecipeFormat.MODERN_1_21)
+        self.assertEqual(detect_format(self.result), RecipeFormat.MODERN_1_21_2_PLUS)
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +314,7 @@ class TestConvertToLegacyShapeless(unittest.TestCase):
         self.assertEqual(self.result["result"]["count"], 3)
 
     def test_detect_format_of_output_is_legacy(self):
-        self.assertEqual(detect_format(self.result), RecipeFormat.LEGACY_1_20)
+        self.assertEqual(detect_format(self.result), RecipeFormat.LEGACY_PRE_1_20_5)
 
 
 # ---------------------------------------------------------------------------
@@ -455,20 +457,20 @@ class TestConvertRecipe(unittest.TestCase):
     """convert_recipe dispatches to the correct converter."""
 
     def test_dispatch_to_modern(self):
-        result = convert_recipe(LEGACY_SHAPED, RecipeFormat.MODERN_1_21)
-        self.assertEqual(detect_format(result), RecipeFormat.MODERN_1_21)
+        result = convert_recipe(LEGACY_SHAPED, RecipeFormat.MODERN_1_21_2_PLUS)
+        self.assertEqual(detect_format(result), RecipeFormat.MODERN_1_21_2_PLUS)
 
     def test_dispatch_to_legacy(self):
-        result = convert_recipe(MODERN_SHAPED, RecipeFormat.LEGACY_1_20)
-        self.assertEqual(detect_format(result), RecipeFormat.LEGACY_1_20)
+        result = convert_recipe(MODERN_SHAPED, RecipeFormat.LEGACY_PRE_1_20_5)
+        self.assertEqual(detect_format(result), RecipeFormat.LEGACY_PRE_1_20_5)
 
     def test_idempotent_modern_to_modern(self):
-        result = convert_recipe(MODERN_SHAPED, RecipeFormat.MODERN_1_21)
+        result = convert_recipe(MODERN_SHAPED, RecipeFormat.MODERN_1_21_2_PLUS)
         self.assertEqual(result["result"]["id"], "minecraft:gunpowder")
         self.assertNotIn("item", result["result"])
 
     def test_idempotent_legacy_to_legacy(self):
-        result = convert_recipe(LEGACY_SHAPED, RecipeFormat.LEGACY_1_20)
+        result = convert_recipe(LEGACY_SHAPED, RecipeFormat.LEGACY_PRE_1_20_5)
         self.assertEqual(result["result"]["item"], "minecraft:gunpowder")
         self.assertNotIn("id", result["result"])
 
@@ -552,7 +554,7 @@ class TestWriteRecipes(unittest.TestCase):
             dest = self._setup_and_write(
                 tmp,
                 [("gunpowder.json", LEGACY_SHAPED)],
-                RecipeFormat.MODERN_1_21,
+                RecipeFormat.MODERN_1_21_2_PLUS,
             )
             self.assertTrue((dest / "gunpowder.json").exists())
 
@@ -564,7 +566,7 @@ class TestWriteRecipes(unittest.TestCase):
                 data_dir,
                 "mymod",
                 "recipes",
-                RecipeFormat.LEGACY_1_20,
+                RecipeFormat.LEGACY_PRE_1_20_5,
             )
             self.assertTrue((data_dir / "mymod" / "recipes" / "r.json").exists())
 
@@ -573,7 +575,7 @@ class TestWriteRecipes(unittest.TestCase):
             dest = self._setup_and_write(
                 tmp,
                 [("test.json", LEGACY_SHAPED)],
-                RecipeFormat.MODERN_1_21,
+                RecipeFormat.MODERN_1_21_2_PLUS,
             )
             written = json.loads((dest / "test.json").read_text())
         # Key should now be a string (modern format).
@@ -585,7 +587,7 @@ class TestWriteRecipes(unittest.TestCase):
             dest = self._setup_and_write(
                 tmp,
                 [("test.json", MODERN_SHAPED)],
-                RecipeFormat.MODERN_1_21,
+                RecipeFormat.MODERN_1_21_2_PLUS,
             )
             raw = (dest / "test.json").read_text(encoding="utf-8")
         # indent=2 means lines start with exactly 2 spaces for top-level fields.
@@ -596,7 +598,7 @@ class TestWriteRecipes(unittest.TestCase):
             dest = self._setup_and_write(
                 tmp,
                 [("test.json", MODERN_SHAPED)],
-                RecipeFormat.MODERN_1_21,
+                RecipeFormat.MODERN_1_21_2_PLUS,
             )
             raw = (dest / "test.json").read_text(encoding="utf-8")
         self.assertTrue(raw.endswith("\n"), repr(raw[-5:]))
@@ -609,7 +611,7 @@ class TestWriteRecipes(unittest.TestCase):
                     ("shaped.json", LEGACY_SHAPED),
                     ("shapeless.json", LEGACY_SHAPELESS),
                 ],
-                RecipeFormat.MODERN_1_21,
+                RecipeFormat.MODERN_1_21_2_PLUS,
             )
             self.assertTrue((dest / "shaped.json").exists())
             self.assertTrue((dest / "shapeless.json").exists())
@@ -623,7 +625,7 @@ class TestWriteRecipes(unittest.TestCase):
                 deeply_nested,
                 "mymod",
                 "recipe",
-                RecipeFormat.MODERN_1_21,
+                RecipeFormat.MODERN_1_21_2_PLUS,
             )
             self.assertTrue((deeply_nested / "mymod" / "recipe" / "r.json").exists())
 
@@ -641,27 +643,128 @@ class TestRoundTrip(unittest.TestCase):
         original = copy.deepcopy(original)
         converted = convert_recipe(original, via)
         back_format = (
-            RecipeFormat.LEGACY_1_20
-            if via == RecipeFormat.MODERN_1_21
-            else RecipeFormat.MODERN_1_21
+            RecipeFormat.LEGACY_PRE_1_20_5
+            if via == RecipeFormat.MODERN_1_21_2_PLUS
+            else RecipeFormat.MODERN_1_21_2_PLUS
         )
         recovered = convert_recipe(converted, back_format)
         self.assertEqual(recovered, original)
 
     def test_shaped_legacy_round_trip_via_modern(self):
-        self._assert_round_trip(LEGACY_SHAPED, RecipeFormat.MODERN_1_21)
+        self._assert_round_trip(LEGACY_SHAPED, RecipeFormat.MODERN_1_21_2_PLUS)
 
     def test_shaped_modern_round_trip_via_legacy(self):
-        self._assert_round_trip(MODERN_SHAPED, RecipeFormat.LEGACY_1_20)
+        self._assert_round_trip(MODERN_SHAPED, RecipeFormat.LEGACY_PRE_1_20_5)
 
     def test_shapeless_legacy_round_trip_via_modern(self):
-        self._assert_round_trip(LEGACY_SHAPELESS, RecipeFormat.MODERN_1_21)
+        self._assert_round_trip(LEGACY_SHAPELESS, RecipeFormat.MODERN_1_21_2_PLUS)
 
     def test_shapeless_modern_round_trip_via_legacy(self):
-        self._assert_round_trip(MODERN_SHAPELESS, RecipeFormat.LEGACY_1_20)
+        self._assert_round_trip(MODERN_SHAPELESS, RecipeFormat.LEGACY_PRE_1_20_5)
 
     def test_smelting_legacy_round_trip_via_modern(self):
-        self._assert_round_trip(SMELTING_LEGACY, RecipeFormat.MODERN_1_21)
+        self._assert_round_trip(SMELTING_LEGACY, RecipeFormat.MODERN_1_21_2_PLUS)
+
+
+# ---------------------------------------------------------------------------
+# Target Conversion & Version Inference tests (Minecraft 1.20.5 - 1.21.1)
+# ---------------------------------------------------------------------------
+
+class TestRecipeVersionInferenceAndConversion(unittest.TestCase):
+    """Tests for targeted version-based recipe formats and conversions."""
+
+    def test_version_parsing(self):
+        from modsmith.recipes import parse_version
+        self.assertEqual(parse_version("1.20.1"), (1, 20, 1))
+        self.assertEqual(parse_version("1.20.5"), (1, 20, 5))
+        self.assertEqual(parse_version("1.21"), (1, 21, 0))
+        self.assertEqual(parse_version("1.21.1"), (1, 21, 1))
+        self.assertEqual(parse_version("1.21.2"), (1, 21, 2))
+
+    def test_infer_format_from_version(self):
+        from modsmith.recipes import infer_format_from_version
+        self.assertEqual(infer_format_from_version("1.20.1"), RecipeFormat.LEGACY_PRE_1_20_5)
+        self.assertEqual(infer_format_from_version("1.20.4"), RecipeFormat.LEGACY_PRE_1_20_5)
+        self.assertEqual(infer_format_from_version("1.20.5"), RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1)
+        self.assertEqual(infer_format_from_version("1.20.6"), RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1)
+        self.assertEqual(infer_format_from_version("1.21"), RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1)
+        self.assertEqual(infer_format_from_version("1.21.1"), RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1)
+        self.assertEqual(infer_format_from_version("1.21.2"), RecipeFormat.MODERN_1_21_2_PLUS)
+
+    def test_resolve_recipe_format_backward_compatibility(self):
+        self.assertEqual(resolve_recipe_format("legacy_1_20", "1.20.1"), RecipeFormat.LEGACY_PRE_1_20_5)
+        self.assertEqual(resolve_recipe_format("legacy_1_20", "1.20.5"), RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1)
+        self.assertEqual(resolve_recipe_format("modern_1_21", "1.21.1"), RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1)
+        self.assertEqual(resolve_recipe_format("modern_1_21", "1.21.2"), RecipeFormat.MODERN_1_21_2_PLUS)
+
+    def test_conversion_behavior_legacy(self):
+        # 1.20.1 shaped: string key becomes object, result has item
+        recipe = {
+            "type": "minecraft:crafting_shaped",
+            "key": {"C": "minecraft:charcoal"},
+            "result": {"id": "minecraft:gunpowder", "count": 1}
+        }
+        res = convert_recipe(recipe, RecipeFormat.LEGACY_PRE_1_20_5)
+        self.assertEqual(res["key"]["C"], {"item": "minecraft:charcoal"})
+        self.assertEqual(res["result"]["item"], "minecraft:gunpowder")
+        self.assertNotIn("id", res["result"])
+
+    def test_conversion_behavior_transitional(self):
+        # 1.20.5 / 1.20.6 / 1.21 / 1.21.1: ingredients use objects, result uses id
+        recipe = {
+            "type": "minecraft:crafting_shaped",
+            "key": {"C": "minecraft:charcoal"},
+            "result": {"item": "minecraft:gunpowder", "count": 1}
+        }
+        res = convert_recipe(recipe, RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1)
+        self.assertEqual(res["key"]["C"], {"item": "minecraft:charcoal"})
+        self.assertEqual(res["result"]["id"], "minecraft:gunpowder")
+        self.assertNotIn("item", res["result"])
+
+        # shapeless ingredients use objects, result uses id
+        recipe_sl = {
+            "type": "minecraft:crafting_shapeless",
+            "ingredients": ["minecraft:charcoal"],
+            "result": {"item": "minecraft:gunpowder", "count": 1}
+        }
+        res_sl = convert_recipe(recipe_sl, RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1)
+        self.assertEqual(res_sl["ingredients"][0], {"item": "minecraft:charcoal"})
+        self.assertEqual(res_sl["result"]["id"], "minecraft:gunpowder")
+
+    def test_conversion_behavior_modern(self):
+        # 1.21.2+: simple object keys become string, result uses id
+        recipe = {
+            "type": "minecraft:crafting_shaped",
+            "key": {"C": {"item": "minecraft:charcoal"}},
+            "result": {"item": "minecraft:gunpowder", "count": 1}
+        }
+        res = convert_recipe(recipe, RecipeFormat.MODERN_1_21_2_PLUS)
+        self.assertEqual(res["key"]["C"], "minecraft:charcoal")
+        self.assertEqual(res["result"]["id"], "minecraft:gunpowder")
+
+        # shapeless simple objects become strings, result uses id
+        recipe_sl = {
+            "type": "minecraft:crafting_shapeless",
+            "ingredients": [{"item": "minecraft:charcoal"}],
+            "result": {"item": "minecraft:gunpowder", "count": 1}
+        }
+        res_sl = convert_recipe(recipe_sl, RecipeFormat.MODERN_1_21_2_PLUS)
+        self.assertEqual(res_sl["ingredients"][0], "minecraft:charcoal")
+        self.assertEqual(res_sl["result"]["id"], "minecraft:gunpowder")
+
+    def test_conversions_preserve_complex_ingredients(self):
+        # Tags and complex structures are preserved
+        recipe = {
+            "type": "minecraft:crafting_shaped",
+            "key": {
+                "T": {"tag": "minecraft:logs"},
+                "X": {"item": "minecraft:charcoal", "count": 2}
+            },
+            "result": {"id": "minecraft:gunpowder"}
+        }
+        res_modern = convert_recipe(recipe, RecipeFormat.MODERN_1_21_2_PLUS)
+        self.assertEqual(res_modern["key"]["T"], {"tag": "minecraft:logs"})
+        self.assertEqual(res_modern["key"]["X"], {"item": "minecraft:charcoal", "count": 2})
 
 
 if __name__ == "__main__":

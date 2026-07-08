@@ -127,8 +127,8 @@ class TemplateDescriptor:
     """Relative path segment for recipes inside ``data/<mod_id>/``.
     ``"recipe"`` for 1.21+ (Fabric/Forge/NeoForge), ``"recipes"`` for 1.20.1 Forge."""
 
-    recipe_format: str = "modern_1_21"
-    """Recipe JSON format: ``"modern_1_21"`` or ``"legacy_1_20"``."""
+    recipe_format: str = ""
+    """Recipe JSON format: ``"legacy_pre_1_20_5"``, ``"transitional_1_20_5_to_1_21_1"``, or ``"modern_1_21_2_plus"``."""
 
     metadata_files: list[str] = field(default_factory=list)
     """Relative paths to mod-metadata files that must be patched (e.g. mods.toml)."""
@@ -302,11 +302,17 @@ def load_template_descriptor(template_dir: Path | str) -> TemplateDescriptor | N
             f"{desc_path}: top-level value must be a JSON object."
         )
 
+    recipe_format = raw.get("recipe_format")
+    mc_version = raw.get("minecraft_version", "")
+    if not recipe_format:
+        from modsmith.recipes import infer_format_from_version
+        recipe_format = infer_format_from_version(mc_version).value
+
     return TemplateDescriptor(
         loader=raw.get("loader", ""),
-        minecraft_version=raw.get("minecraft_version", ""),
+        minecraft_version=mc_version,
         recipe_folder=raw.get("recipe_folder", "recipe"),
-        recipe_format=raw.get("recipe_format", "modern_1_21"),
+        recipe_format=recipe_format,
         metadata_files=raw.get("metadata_files", []),
         java_mod_import=raw.get("java_mod_import", ""),
         uses_generated_metadata=raw.get("uses_generated_metadata", False),

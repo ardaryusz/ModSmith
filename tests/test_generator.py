@@ -23,10 +23,13 @@ class TestIsLegacyRecipeVersion(unittest.TestCase):
     def test_legacy_versions(self):
         self.assertTrue(is_legacy_recipe_version("1.20"))
         self.assertTrue(is_legacy_recipe_version("1.20.1"))
+        self.assertTrue(is_legacy_recipe_version("1.20.4"))
         self.assertTrue(is_legacy_recipe_version("1.19.4"))
         self.assertTrue(is_legacy_recipe_version("1.12.2"))
 
     def test_modern_versions(self):
+        self.assertFalse(is_legacy_recipe_version("1.20.5"))
+        self.assertFalse(is_legacy_recipe_version("1.20.6"))
         self.assertFalse(is_legacy_recipe_version("1.21"))
         self.assertFalse(is_legacy_recipe_version("1.21.1"))
         self.assertFalse(is_legacy_recipe_version("1.22"))

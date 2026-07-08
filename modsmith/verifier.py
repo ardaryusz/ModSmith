@@ -85,15 +85,9 @@ _JAVA_LINE_WARN_THRESHOLD = 60
 
 def _recipe_format(ctx: TargetContext) -> RecipeFormat:
     """Resolve the expected recipe format for this target."""
-    if ctx.descriptor and ctx.descriptor.recipe_format:
-        return RecipeFormat(ctx.descriptor.recipe_format)
-    # Heuristic: minor <= 20 → legacy
-    try:
-        parts = ctx.minecraft_version.split(".")
-        minor = int(parts[1]) if len(parts) >= 2 else 99
-        return RecipeFormat.LEGACY_1_20 if minor <= 20 else RecipeFormat.MODERN_1_21
-    except (ValueError, IndexError):
-        return RecipeFormat.MODERN_1_21
+    from modsmith.recipes import resolve_recipe_format
+    raw_fmt = ctx.descriptor.recipe_format if ctx.descriptor else None
+    return resolve_recipe_format(raw_fmt, ctx.minecraft_version)
 
 
 def _is_tag_ingredient(value: Any) -> bool:
@@ -169,17 +163,17 @@ def _verify_recipe_content(
     result_obj = data.get("result", {})
 
     if isinstance(result_obj, dict):
-        if fmt == RecipeFormat.LEGACY_1_20:
+        if fmt == RecipeFormat.LEGACY_PRE_1_20_5:
             if "id" in result_obj and "item" not in result_obj:
                 result.errors.append(
                     f"Recipe '{filename}': result uses 'id' (modern) but expected 'item' "
-                    f"(legacy_1_20 format)."
+                    f"(legacy_pre_1_20_5 format)."
                 )
-        elif fmt == RecipeFormat.MODERN_1_21:
+        elif fmt in (RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1, RecipeFormat.MODERN_1_21_2_PLUS):
             if "item" in result_obj and "id" not in result_obj:
                 result.errors.append(
                     f"Recipe '{filename}': result uses 'item' (legacy) but expected 'id' "
-                    f"(modern_1_21 format)."
+                    f"({fmt.value} format)."
                 )
 
     if "minecraft:crafting_shaped" in rtype:
@@ -188,11 +182,21 @@ def _verify_recipe_content(
             for k, v in keys.items():
                 if _is_tag_ingredient(v):
                     continue  # tags are fine in both formats
-                if fmt == RecipeFormat.LEGACY_1_20 and isinstance(v, str):
-                    result.errors.append(
-                        f"Recipe '{filename}': shaped key '{k}' is a plain string "
-                        f"(modern style) but target format is legacy_1_20."
-                    )
+                if isinstance(v, dict) and set(v.keys()) != {"item"}:
+                    continue  # complex are fine
+                
+                if fmt in (RecipeFormat.LEGACY_PRE_1_20_5, RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1):
+                    if isinstance(v, str):
+                        result.errors.append(
+                            f"Recipe '{filename}': shaped key '{k}' is a plain string "
+                            f"(modern style) but target format is {fmt.value}."
+                        )
+                elif fmt == RecipeFormat.MODERN_1_21_2_PLUS:
+                    if isinstance(v, dict) and set(v.keys()) == {"item"}:
+                        result.errors.append(
+                            f"Recipe '{filename}': shaped key '{k}' is an object "
+                            f"(legacy style) but target format is modern_1_21_2_plus."
+                        )
 
     if "minecraft:crafting_shapeless" in rtype:
         ingredients = data.get("ingredients", [])
@@ -200,11 +204,21 @@ def _verify_recipe_content(
             for ing in ingredients:
                 if _is_tag_ingredient(ing):
                     continue
-                if fmt == RecipeFormat.LEGACY_1_20 and isinstance(ing, str):
-                    result.errors.append(
-                        f"Recipe '{filename}': shapeless ingredient is a plain string "
-                        f"(modern style) but target format is legacy_1_20."
-                    )
+                if isinstance(ing, dict) and set(ing.keys()) != {"item"}:
+                    continue
+                
+                if fmt in (RecipeFormat.LEGACY_PRE_1_20_5, RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1):
+                    if isinstance(ing, str):
+                        result.errors.append(
+                            f"Recipe '{filename}': shapeless ingredient is a plain string "
+                            f"(modern style) but target format is {fmt.value}."
+                        )
+                elif fmt == RecipeFormat.MODERN_1_21_2_PLUS:
+                    if isinstance(ing, dict) and set(ing.keys()) == {"item"}:
+                        result.errors.append(
+                            f"Recipe '{filename}': shapeless ingredient is an object "
+                            f"(legacy style) but target format is modern_1_21_2_plus."
+                        )
 
 
 def _verify_java_sources(

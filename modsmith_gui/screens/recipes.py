@@ -195,7 +195,12 @@ class RecipesScreen(QWidget):
                 # Retrieve attributes
                 recipe_type = data.get("type", "—")
                 fmt = detect_format(data)
-                detected_format = "Modern 1.21" if fmt == RecipeFormat.MODERN_1_21 else "Legacy 1.20"
+                if fmt == RecipeFormat.LEGACY_PRE_1_20_5:
+                    detected_format = "Legacy (<= 1.20.4)"
+                elif fmt == RecipeFormat.TRANSITIONAL_1_20_5_TO_1_21_1:
+                    detected_format = "Transitional (1.20.5 - 1.21.1)"
+                else:
+                    detected_format = "Modern (>= 1.21.2)"
 
                 # Parse result
                 res = data.get("result")

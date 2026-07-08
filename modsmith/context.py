@@ -219,15 +219,18 @@ class TargetContext:
         """Recipe subfolder name (``"recipe"`` or ``"recipes"``).
 
         Reads from the template descriptor if available, otherwise falls back to
-        a version-based heuristic: ``"recipes"`` for 1.20.x, ``"recipe"`` for 1.21+.
+        a version-based heuristic: ``"recipes"`` for < 1.21, ``"recipe"`` for >= 1.21.
         """
         if self.descriptor:
             return self.descriptor.recipe_folder
-        # Heuristic fallback based on the leading minor version component.
+        # Heuristic fallback based on the version component.
         try:
-            major_minor = self.target.minecraft_version.split(".")
-            minor = int(major_minor[1]) if len(major_minor) >= 2 else 99
-            return "recipes" if minor <= 20 else "recipe"
+            parts = self.target.minecraft_version.split(".")
+            major = int(parts[0]) if len(parts) >= 1 else 1
+            minor = int(parts[1]) if len(parts) >= 2 else 0
+            if major > 1 or (major == 1 and minor >= 21):
+                return "recipe"
+            return "recipes"
         except (ValueError, IndexError):
             return "recipe"
 

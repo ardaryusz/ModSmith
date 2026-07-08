@@ -23,7 +23,7 @@ from modsmith.config import load_mod_config, load_template_descriptor
 from modsmith.context import ModContext, TargetContext
 from modsmith.validator import validate_workspace
 from modsmith.templates import copy_template, write_java_entrypoint
-from modsmith.recipes import load_recipes, write_recipes, RecipeFormat
+from modsmith.recipes import load_recipes, write_recipes, RecipeFormat, resolve_recipe_format
 from modsmith.patchers import get_patcher
 from modsmith.verifier import verify_generated_project
 from modsmith.git_ops import (
@@ -52,12 +52,16 @@ class GenerateError(Exception):
 
 
 def is_legacy_recipe_version(version: str) -> bool:
-    """Check if Minecraft version is 1.20.x or lower (legacy recipe format)."""
+    """Check if Minecraft version is 1.20.4 or lower (legacy recipe format)."""
     try:
         parts = version.split('.')
         if len(parts) >= 2:
             minor = int(parts[1])
-            return minor <= 20
+            if minor < 20:
+                return True
+            if minor == 20:
+                patch = int(parts[2]) if len(parts) >= 3 else 0
+                return patch <= 4
     except (ValueError, IndexError):
         pass
     return False
@@ -291,13 +295,8 @@ def generate(
             warnings.append(f"Failed to write Java entrypoint for '{tc.branch}': {exc}")
 
         # Convert and write recipes
-        if tc.descriptor and tc.descriptor.recipe_format:
-            target_format = RecipeFormat(tc.descriptor.recipe_format)
-        else:
-            if is_legacy_recipe_version(tc.minecraft_version):
-                target_format = RecipeFormat.LEGACY_1_20
-            else:
-                target_format = RecipeFormat.MODERN_1_21
+        raw_fmt = tc.descriptor.recipe_format if tc.descriptor else None
+        target_format = resolve_recipe_format(raw_fmt, tc.minecraft_version)
 
         recipe_folder = tc.recipe_folder
         dest_data_dir = output_repo_dir / "src" / "main" / "resources" / "data"

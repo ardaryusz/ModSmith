@@ -32,9 +32,13 @@ from modsmith_gui.template_descriptor_utils import (
     infer_template_descriptor_defaults,
     KNOWN_LOADERS,
     RECIPE_FORMAT_LEGACY,
+    RECIPE_FORMAT_TRANSITIONAL,
     RECIPE_FORMAT_MODERN,
+    RECIPE_FORMAT_DISPLAY_TO_STORED,
+    RECIPE_FORMAT_STORED_TO_DISPLAY,
     recipe_format_for_minecraft_version,
     recipe_folder_for_minecraft_version,
+    resolve_recipe_format_string,
 )
 
 _DESCRIPTOR_FILENAME = "modsmith-template.json"
@@ -113,7 +117,7 @@ class TemplateDescriptorDialog(QDialog):
 
         # Recipe Format
         self._cmb_recipe_format = QComboBox()
-        self._cmb_recipe_format.addItems([RECIPE_FORMAT_LEGACY, RECIPE_FORMAT_MODERN])
+        self._cmb_recipe_format.addItems(list(RECIPE_FORMAT_DISPLAY_TO_STORED.keys()))
         self._cmb_recipe_format.setEditable(False)
         form.addRow("Recipe Format:", self._cmb_recipe_format)
 
@@ -135,8 +139,9 @@ class TemplateDescriptorDialog(QDialog):
 
         # Hint
         hint = QLabel(
-            "<i>Recipe Format:</i> use <code>legacy_1_20</code> for 1.20.x "
-            "and <code>modern_1_21</code> for 1.21+."
+            "<i>Recipe Format:</i> use <code>legacy_pre_1_20_5</code> for <= 1.20.4, "
+            "<code>transitional_1_20_5_to_1_21_1</code> for 1.20.5 - 1.21.1, "
+            "and <code>modern_1_21_2_plus</code> for >= 1.21.2."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #666; font-size: 11px;")
@@ -188,7 +193,13 @@ class TemplateDescriptorDialog(QDialog):
 
         self._set_loader(raw.get("loader", ""))
         self._txt_mc_version.setText(raw.get("minecraft_version", ""))
-        self._set_recipe_format(raw.get("recipe_format", RECIPE_FORMAT_MODERN))
+        
+        # Resolve the format string defensively (backward compatible mapping)
+        mc_ver = raw.get("minecraft_version", "")
+        raw_format = raw.get("recipe_format", "")
+        resolved = resolve_recipe_format_string(raw_format, mc_ver)
+        self._set_recipe_format(resolved)
+        
         self._set_recipe_folder(raw.get("recipe_folder", "recipes"))
         # Only mark as user-edited if jar_loader_suffix was explicitly set
         suffix = raw.get("jar_loader_suffix", "")
@@ -210,12 +221,16 @@ class TemplateDescriptorDialog(QDialog):
             self._cmb_loader.setCurrentIndex(0)
 
     def _set_recipe_format(self, fmt: str) -> None:
-        idx = self._cmb_recipe_format.findText(fmt, Qt.MatchFlag.MatchFixedString)
+        # Resolve raw format string to display label
+        resolved = resolve_recipe_format_string(fmt, self._txt_mc_version.text().strip())
+        display_val = RECIPE_FORMAT_STORED_TO_DISPLAY.get(resolved, "Modern (>= 1.21.2)")
+        
+        idx = self._cmb_recipe_format.findText(display_val, Qt.MatchFlag.MatchFixedString)
         if idx >= 0:
             self._cmb_recipe_format.setCurrentIndex(idx)
         else:
-            # Default to modern
-            idx_modern = self._cmb_recipe_format.findText(RECIPE_FORMAT_MODERN)
+            # Fallback to Modern
+            idx_modern = self._cmb_recipe_format.findText("Modern (>= 1.21.2)", Qt.MatchFlag.MatchFixedString)
             self._cmb_recipe_format.setCurrentIndex(max(idx_modern, 0))
 
     def _set_recipe_folder(self, folder: str) -> None:
@@ -294,7 +309,11 @@ class TemplateDescriptorDialog(QDialog):
 
         data["loader"] = loader
         data["minecraft_version"] = mc_version
+        
+        recipe_format_display = self._cmb_recipe_format.currentText().strip()
+        recipe_format = RECIPE_FORMAT_DISPLAY_TO_STORED.get(recipe_format_display, "modern_1_21_2_plus")
         data["recipe_format"] = recipe_format
+        
         data["recipe_folder"] = recipe_folder
         data["jar_loader_suffix"] = jar_suffix
 

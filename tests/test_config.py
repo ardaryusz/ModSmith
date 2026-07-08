@@ -470,7 +470,7 @@ class TestLoadTemplateDescriptor(unittest.TestCase):
             desc = load_template_descriptor(tmp)
         self.assertIsNotNone(desc)
         self.assertEqual(desc.recipe_folder, "recipe")       # default
-        self.assertEqual(desc.recipe_format, "modern_1_21")  # default
+        self.assertEqual(desc.recipe_format, "modern_1_21_2_plus")  # default
         self.assertEqual(desc.metadata_files, [])            # default
         self.assertFalse(desc.uses_generated_metadata)       # default
 

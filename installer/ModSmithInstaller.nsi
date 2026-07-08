@@ -46,6 +46,13 @@
 !define PRODUCT_PUBLISHER "ModSmith Project"
 !define PRODUCT_WEB       "https://github.com/modsmith"
 
+VIProductVersion "2.0.1.0"
+VIAddVersionKey "ProductName" "${PRODUCT_NAME}"
+VIAddVersionKey "ProductVersion" "${PRODUCT_VERSION}"
+VIAddVersionKey "FileVersion" "${PRODUCT_VERSION}"
+VIAddVersionKey "FileDescription" "ModSmith Setup"
+VIAddVersionKey "CompanyName" "${PRODUCT_PUBLISHER}"
+
 ; Registry path for user environment variables
 !define ENV_REG_KEY "Environment"
 
