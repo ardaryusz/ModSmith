@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "modsmith"
-version = "2.0.1"
+version = "2.0.2"
 description = "Local automation tool for generating recipe-only Minecraft mods across multiple loaders."
 readme = "README.md"
 requires-python = ">=3.10"

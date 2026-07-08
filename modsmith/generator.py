@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from modsmith.config import load_mod_config, load_template_descriptor
-from modsmith.context import ModContext, TargetContext
+from modsmith.context import ModContext, TargetContext, discover_license_file
 from modsmith.validator import validate_workspace
 from modsmith.templates import copy_template, write_java_entrypoint
 from modsmith.recipes import load_recipes, write_recipes, RecipeFormat, resolve_recipe_format
@@ -33,6 +33,7 @@ from modsmith.git_ops import (
     git_add_all,
     git_commit,
     git_checkout,
+    git_list_branches,
     write_gitignore,
 )
 
@@ -86,6 +87,78 @@ Generated automatically by ModSmith.
         path.write_text(content, encoding="utf-8")
     except Exception:
         pass
+
+
+def template_has_license_file(template_dir: Path, ext: str) -> bool:
+    """Check if template_dir contains a file named LICENSE (case-insensitive) with ext (case-insensitive)."""
+    if not template_dir.is_dir():
+        return False
+    ext_lower = ext.lower()
+    for entry in template_dir.iterdir():
+        if entry.is_file() and entry.stem.lower() == "license" and entry.suffix.lower() == ext_lower:
+            return True
+    return False
+
+
+def clear_working_tree_selectively(repo_dir: Path, template_dir: Path) -> None:
+    """Selectively delete files in repo_dir that are template-provided or ModSmith-generated,
+    preserving unrelated user-added files and folders.
+    """
+    if not repo_dir.exists():
+        return
+
+    # Helper to get all relative paths in a directory recursively
+    def get_relative_paths(base_dir: Path) -> set[Path]:
+        paths = set()
+        if base_dir.is_dir():
+            for p in base_dir.rglob("*"):
+                paths.add(p.relative_to(base_dir))
+        return paths
+
+    template_paths = get_relative_paths(template_dir)
+    
+    always_delete_names = {
+        Path(".gitignore"),
+        Path("README.md"),
+        Path("LICENSE.md"),
+        Path("LICENSE.txt")
+    }
+    
+    # Walk the repo_dir and decide what to delete bottom-up
+    for child in sorted(repo_dir.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+        if ".git" in child.parts:
+            continue
+            
+        rel = child.relative_to(repo_dir)
+        
+        # Check if it should be deleted
+        should_delete = False
+        if rel in always_delete_names:
+            # For LICENSE.md and LICENSE.txt, only delete if NOT present in template
+            if rel.name.lower() == "license.md":
+                if not template_has_license_file(template_dir, ".md"):
+                    should_delete = True
+            elif rel.name.lower() == "license.txt":
+                if not template_has_license_file(template_dir, ".txt"):
+                    should_delete = True
+            else:
+                should_delete = True
+        elif rel in template_paths:
+            should_delete = True
+        elif any(parent in always_delete_names or parent in template_paths for parent in rel.parents):
+            should_delete = True
+            
+        if should_delete:
+            if child.is_file() or child.is_symlink():
+                try:
+                    child.unlink()
+                except Exception:
+                    pass
+            elif child.is_dir():
+                try:
+                    child.rmdir()
+                except Exception:
+                    pass
 
 
 def generate(
@@ -167,15 +240,43 @@ def generate(
         )
 
     # 6. Real run
-    # Simple overwrite: delete entire output repo and regenerate if exists and --force
-    if output_repo_dir.exists():
-        if force:
-            try:
-                safe_delete_tree(output_repo_dir)
-            except OSError as exc:
-                raise ValueError(f"Failed to delete existing output repo: {exc}")
-        else:
-            raise ValueError(f"Output repo already exists: {output_repo_dir}")
+    # Simple overwrite check
+    if output_repo_dir.exists() and not force:
+        raise ValueError(f"Output repo already exists: {output_repo_dir}")
+
+    # Discover and log workspace license once
+    license_dir = mod_ctx.license_dir
+    license_file = None
+    if license_dir.is_dir():
+        md_matches = []
+        txt_matches = []
+        try:
+            for entry in license_dir.iterdir():
+                if entry.is_file():
+                    stem_lower = entry.stem.lower()
+                    ext_lower = entry.suffix.lower()
+                    if stem_lower == "license":
+                        if ext_lower == ".md":
+                            md_matches.append(entry)
+                        elif ext_lower == ".txt":
+                            txt_matches.append(entry)
+        except OSError:
+            pass
+
+        md_matches.sort(key=lambda p: p.name)
+        txt_matches.sort(key=lambda p: p.name)
+        total_matches = len(md_matches) + len(txt_matches)
+        if total_matches > 1:
+            selected_name = md_matches[0].name if md_matches else txt_matches[0].name
+            print(f"Multiple license files found; using {selected_name}")
+        
+        license_file = discover_license_file(license_dir)
+        if license_file is not None:
+            norm_path = os.path.normpath(str(license_file))
+            print(f"License selected: {norm_path}")
+
+    if license_file is None:
+        print("No workspace license file found; generated branches will not include one")
 
 
     output_repo_dir.mkdir(parents=True, exist_ok=True)
@@ -196,12 +297,16 @@ def generate(
     for i, tc in enumerate(selected_targets):
         # Create / Checkout orphan branch
         try:
-            git_create_orphan_branch(output_repo_dir, tc.branch)
+            existing_branches = git_list_branches(output_repo_dir)
+            if tc.branch in existing_branches:
+                git_checkout(output_repo_dir, tc.branch)
+            else:
+                git_create_orphan_branch(output_repo_dir, tc.branch)
         except Exception as exc:
-            raise ValueError(f"Failed to create orphan branch '{tc.branch}': {exc}")
+            raise ValueError(f"Failed to checkout or create branch '{tc.branch}': {exc}")
 
-        # Clear working tree
-        git_clear_working_tree(output_repo_dir)
+        # Clear working tree selectively, preserving unrelated user-added content
+        clear_working_tree_selectively(output_repo_dir, tc.template_dir)
 
         # Write standard .gitignore
         try:
@@ -244,6 +349,46 @@ def generate(
                     _write_default_readme(readme_dest, mod_ctx)
         else:
             _write_default_readme(readme_dest, mod_ctx)
+
+        # Copy workspace LICENSE if found
+        out_license_md = output_repo_dir / "LICENSE.md"
+        out_license_txt = output_repo_dir / "LICENSE.txt"
+
+        if license_file is not None:
+            dest_name = f"LICENSE{license_file.suffix.lower()}"
+            dest_path = output_repo_dir / dest_name
+
+            # Clean up the stale alternate license format if not provided by the template
+            if license_file.suffix.lower() == ".md":
+                if out_license_txt.exists() and not template_has_license_file(tc.template_dir, ".txt"):
+                    try:
+                        out_license_txt.unlink()
+                    except Exception:
+                        pass
+            elif license_file.suffix.lower() == ".txt":
+                if out_license_md.exists() and not template_has_license_file(tc.template_dir, ".md"):
+                    try:
+                        out_license_md.unlink()
+                    except Exception:
+                        pass
+
+            try:
+                shutil.copy2(license_file, dest_path)
+                print(f"Copied license to generated branch: {dest_name}")
+            except Exception as exc:
+                raise ValueError(f"Failed to copy license file '{license_file}' to '{dest_path}': {exc}")
+        else:
+            # If no license is selected in workspace, clean up any stale license files not provided by the template
+            if out_license_md.exists() and not template_has_license_file(tc.template_dir, ".md"):
+                try:
+                    out_license_md.unlink()
+                except Exception:
+                    pass
+            if out_license_txt.exists() and not template_has_license_file(tc.template_dir, ".txt"):
+                try:
+                    out_license_txt.unlink()
+                except Exception:
+                    pass
 
         # Copy mod icon to loader-specific resource location (PNG only)
         if mod_ctx.config.icon:

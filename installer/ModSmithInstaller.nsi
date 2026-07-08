@@ -46,7 +46,7 @@
 !define PRODUCT_PUBLISHER "ModSmith Project"
 !define PRODUCT_WEB       "https://github.com/modsmith"
 
-VIProductVersion "2.0.1.0"
+VIProductVersion "2.0.2.0"
 VIAddVersionKey "ProductName" "${PRODUCT_NAME}"
 VIAddVersionKey "ProductVersion" "${PRODUCT_VERSION}"
 VIAddVersionKey "FileVersion" "${PRODUCT_VERSION}"
@@ -165,6 +165,7 @@ Section "!ModSmith Core (required)" SEC_CORE
     CreateDirectory "$UserDataDir\WORKSPACE\DETAILS"
     CreateDirectory "$UserDataDir\WORKSPACE\DIST"
     CreateDirectory "$UserDataDir\WORKSPACE\ASSETS"
+    CreateDirectory "$UserDataDir\WORKSPACE\LICENSE"
     CreateDirectory "$UserDataDir\MODS"
 
     ; --- Install sample files ---

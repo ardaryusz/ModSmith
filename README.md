@@ -8,6 +8,7 @@
 
 - **Multi-loader target generation:** Generate mods for Fabric, Forge, and NeoForge concurrently.
 - **Automatic recipe format conversion:** Seamlessly translate recipes between legacy (1.20) and modern (1.21) formats.
+- **Optional license file support:** Automatically discover and copy workspace `LICENSE.md` or `LICENSE.txt` to all generated mod branch roots.
 - **Isolated Git branches:** Creates clean local Git orphan branches per target to prevent version skew.
 - **Project verification:** Automatic generated-project verification, Java package matching, and entrypoint pruning.
 - **Gradle build automation:** Build all loader targets in sequence using automated Gradle compilation.
@@ -60,6 +61,7 @@ Create the file `WORKSPACE/DETAILS/modsmith.json` defining your mod details and 
 
 - Place your custom recipe JSON files under `WORKSPACE/RECIPES/` (either legacy 1.20 or modern 1.21 format).
 - Download and place unpacked Minecraft mod MDKs inside `MODTEMPLATES/` (e.g. `MODTEMPLATES/forge-1.20.1`).
+- (Optional) Place your `LICENSE.md` or `LICENSE.txt` file in `WORKSPACE/LICENSE/` to have it copied to generated branch roots.
 
 ### 4. Execute Workflow
 

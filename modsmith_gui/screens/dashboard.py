@@ -94,6 +94,18 @@ class DashboardScreen(QWidget):
         self._lbl_summary_readme = QLabel("—")
         self._lbl_summary_assets = QLabel("—")
         self._lbl_summary_icon = QLabel("—")
+        self._lbl_summary_license = QLabel("—")
+
+        self._btn_open_license = QPushButton("Open Folder")
+        self._btn_open_license.setFixedWidth(80)
+        self._btn_open_license.clicked.connect(self._open_license_folder)
+
+        license_layout = QHBoxLayout()
+        license_layout.setContentsMargins(0, 0, 0, 0)
+        license_layout.setSpacing(6)
+        license_layout.addWidget(self._lbl_summary_license)
+        license_layout.addWidget(self._btn_open_license)
+        license_layout.addStretch()
 
         summary_form.addRow("Templates:", self._lbl_summary_templates)
         summary_form.addRow("Recipes:", self._lbl_summary_recipes)
@@ -101,6 +113,7 @@ class DashboardScreen(QWidget):
         summary_form.addRow("README.md:", self._lbl_summary_readme)
         summary_form.addRow("Assets:", self._lbl_summary_assets)
         summary_form.addRow("Mod Icon:", self._lbl_summary_icon)
+        summary_form.addRow("License:", license_layout)
 
         root.addWidget(summary_group)
 
@@ -305,6 +318,45 @@ class DashboardScreen(QWidget):
         self._lbl_summary_icon.setText(icon_text)
         self._lbl_summary_icon.setStyleSheet(f"color: {icon_color}; font-weight: bold;")
 
+        # 7. License summary
+        license_dir = workspace_dir / "LICENSE"
+        self._lbl_summary_license.setToolTip(f"License directory: {license_dir}")
+        if not license_dir.exists():
+            self._lbl_summary_license.setText("No license file found (folder missing)")
+            self._lbl_summary_license.setStyleSheet("color: #b87800; font-weight: bold;")
+        else:
+            try:
+                from modsmith.context import discover_license_file
+                md_matches = []
+                txt_matches = []
+                for entry in license_dir.iterdir():
+                    if entry.is_file():
+                        stem_lower = entry.stem.lower()
+                        ext_lower = entry.suffix.lower()
+                        if stem_lower == "license":
+                            if ext_lower == ".md":
+                                md_matches.append(entry)
+                            elif ext_lower == ".txt":
+                                txt_matches.append(entry)
+
+                md_matches.sort(key=lambda p: p.name)
+                txt_matches.sort(key=lambda p: p.name)
+                total_matches = len(md_matches) + len(txt_matches)
+                selected = discover_license_file(license_dir)
+
+                if total_matches == 0:
+                    self._lbl_summary_license.setText("No license file found")
+                    self._lbl_summary_license.setStyleSheet("color: #b87800; font-weight: bold;")
+                elif total_matches > 1:
+                    self._lbl_summary_license.setText(f"Multiple found; using {selected.name}")
+                    self._lbl_summary_license.setStyleSheet("color: #b87800; font-weight: bold;")
+                else:
+                    self._lbl_summary_license.setText(selected.name)
+                    self._lbl_summary_license.setStyleSheet("color: #060; font-weight: bold;")
+            except Exception as exc:
+                self._lbl_summary_license.setText(f"Scan failed: {exc}")
+                self._lbl_summary_license.setStyleSheet("color: #b00; font-weight: bold;")
+
     def _refresh_dist(self, workspace_dir: Path) -> None:
         dist_dir = workspace_dir / "DIST"
         if not dist_dir.is_dir():
@@ -354,3 +406,29 @@ class DashboardScreen(QWidget):
             self._doctor_badge.set_error(summary)
         # Clean up worker reference (it has already finished)
         self._doctor_worker = None
+
+    @Slot()
+    def _open_license_folder(self) -> None:
+        """Safely open the active license directory in Explorer."""
+        import sys
+        import subprocess
+        from PySide6.QtWidgets import QMessageBox
+
+        ws = _get_default_dir("WORKSPACE")
+        license_dir = ws / "LICENSE"
+        if not license_dir.is_dir():
+            try:
+                license_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                QMessageBox.critical(self, "Open Folder", f"Failed to create directory:\n{exc}")
+                return
+
+        try:
+            if sys.platform == "win32":
+                subprocess.Popen(["explorer", str(license_dir)])
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(license_dir)])
+            else:
+                subprocess.Popen(["xdg-open", str(license_dir)])
+        except OSError as exc:
+            QMessageBox.critical(self, "Open Folder", f"Failed to open directory:\n{exc}")

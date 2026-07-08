@@ -18,6 +18,45 @@ from modsmith.config import ModConfig, TargetConfig, TemplateDescriptor
 # ---------------------------------------------------------------------------
 
 
+def discover_license_file(license_dir: Path) -> Path | None:
+    """Finds the license file in license_dir.
+    Searches case-insensitively for files whose stem is 'LICENSE'
+    and extension is either '.md' or '.txt'.
+    If multiple matches exist, prefers '.md' over '.txt'.
+    Returns the Path to the selected file, or None if not found or directory missing.
+    """
+    if not license_dir.is_dir():
+        return None
+
+    md_matches = []
+    txt_matches = []
+
+    try:
+        for entry in license_dir.iterdir():
+            if not entry.is_file():
+                continue
+            stem_lower = entry.stem.lower()
+            ext_lower = entry.suffix.lower()
+            if stem_lower == "license":
+                if ext_lower == ".md":
+                    md_matches.append(entry)
+                elif ext_lower == ".txt":
+                    txt_matches.append(entry)
+    except OSError:
+        return None
+
+    # Sort deterministically
+    md_matches.sort(key=lambda p: p.name)
+    txt_matches.sort(key=lambda p: p.name)
+
+    if md_matches:
+        return md_matches[0]
+    if txt_matches:
+        return txt_matches[0]
+
+    return None
+
+
 @dataclass
 class ModContext:
     """Flattened runtime view of :class:`ModConfig` plus resolved filesystem paths.
@@ -27,7 +66,6 @@ class ModContext:
     """
 
     config: ModConfig
-
     workspace_dir: Path = field(default_factory=lambda: Path("WORKSPACE").resolve())
     templates_dir: Path = field(default_factory=lambda: Path("MODTEMPLATES").resolve())
     mods_dir: Path = field(default_factory=lambda: Path("MODS").resolve())
@@ -55,6 +93,16 @@ class ModContext:
     def assets_dir(self) -> Path:
         """``WORKSPACE/ASSETS/``"""
         return self.workspace_dir / "ASSETS"
+
+    @property
+    def license_dir(self) -> Path:
+        """``WORKSPACE/LICENSE/``"""
+        return self.workspace_dir / "LICENSE"
+
+    @property
+    def license_file(self) -> Path | None:
+        """The selected license file path, or None."""
+        return discover_license_file(self.license_dir)
 
     @property
     def output_repo_dir(self) -> Path:

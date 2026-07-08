@@ -110,6 +110,40 @@ def diagnose_environment(
     else:
         result.add_info(f"WORKSPACE/ASSETS directory does not exist (optional): {assets_dir}")
 
+    # WORKSPACE/LICENSE (Missing is INFO only, never an error)
+    license_dir = workspace_dir / "LICENSE"
+    if license_dir.is_dir():
+        result.add_info(f"WORKSPACE/LICENSE directory exists: {license_dir}")
+        try:
+            from modsmith.context import discover_license_file
+            md_matches = []
+            txt_matches = []
+            for entry in license_dir.iterdir():
+                if entry.is_file():
+                    stem_lower = entry.stem.lower()
+                    ext_lower = entry.suffix.lower()
+                    if stem_lower == "license":
+                        if ext_lower == ".md":
+                            md_matches.append(entry)
+                        elif ext_lower == ".txt":
+                            txt_matches.append(entry)
+
+            md_matches.sort(key=lambda p: p.name)
+            txt_matches.sort(key=lambda p: p.name)
+            total_matches = len(md_matches) + len(txt_matches)
+            selected = discover_license_file(license_dir)
+
+            if total_matches == 0:
+                result.add_info("No workspace LICENSE.md or LICENSE.txt found; generated mods will not include a license file.")
+            elif total_matches > 1:
+                result.add_info(f"Multiple workspace license files exist (found {total_matches} files). Markdown file {selected.name} was selected.")
+            else:
+                result.add_info(f"Workspace license file found: {selected.resolve()}")
+        except Exception as exc:
+            result.add_info(f"Failed to scan workspace LICENSE files: {exc}")
+    else:
+        result.add_info(f"WORKSPACE/LICENSE directory does not exist (optional): {license_dir}")
+
     # MODTEMPLATES (Missing templates root is an error)
     if templates_dir.is_dir():
         result.add_info(f"MODTEMPLATES directory exists: {templates_dir}")

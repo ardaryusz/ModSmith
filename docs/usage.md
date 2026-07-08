@@ -39,6 +39,8 @@ The following directories reside under your `MODSMITH_HOME` (or the folder from 
   Place all your custom recipe JSON files here. You can use either legacy (1.20) or modern (1.21) recipe formats, and ModSmith will handle conversion.
 * **`WORKSPACE/README/`**
   *Optional.* Contains a `README.md` that is automatically copied to the root of each generated mod target branch.
+* **`WORKSPACE/LICENSE/`**
+  *Optional.* Contains a `LICENSE.md` or `LICENSE.txt` file that is automatically copied to the root of each generated mod target branch (normalized to uppercase `LICENSE`).
 * **`WORKSPACE/ASSETS/`**
   *Optional.* Stores README images and mod icons. README images use relative paths like `../ASSETS/image.png`. Mod icons are referenced in `modsmith.json` via the `icon` field.
 * **`WORKSPACE/DIST/`**

@@ -47,6 +47,7 @@ def ensure_home_structure(path: Path | str) -> None:
         "WORKSPACE/RECIPES",
         "WORKSPACE/README",
         "WORKSPACE/ASSETS",
+        "WORKSPACE/LICENSE",
         "WORKSPACE/DIST",
         "MODTEMPLATES",
         "MODS",
