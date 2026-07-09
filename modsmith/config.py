@@ -22,6 +22,7 @@ from modsmith.utils import (
     is_valid_java_identifier,
     is_valid_java_package,
     to_class_name,
+    is_valid_git_branch_name,
 )
 
 
@@ -60,6 +61,17 @@ class TargetConfig:
 
     minecraft_version_range: str = ""
     """Gradle-style version range (e.g. ``"[1.21,1.21.2)"``). Optional for Fabric."""
+
+
+@dataclass
+class LandingBranchConfig:
+    """Configuration for repository landing branch (GitHub default branch)."""
+
+    enabled: bool = True
+    """Whether to generate the landing branch."""
+
+    name: str = "main"
+    """Configured landing branch name."""
 
 
 @dataclass
@@ -107,6 +119,10 @@ class ModConfig:
 
     icon: str = ""
     """Optional mod icon path relative to WORKSPACE (e.g. ``"ASSETS/icon.png"``)."""
+
+    landing_branch: LandingBranchConfig = field(default_factory=LandingBranchConfig)
+    """Optional landing branch configuration."""
+
 
 
 @dataclass
@@ -261,6 +277,44 @@ def load_mod_config(path: Path | str) -> ModConfig:
 
     targets = [_parse_target(t, i) for i, t in enumerate(raw_targets)]
 
+    # Validate target branch duplicates after case normalization
+    seen_target_branches = set()
+    for i, t in enumerate(targets):
+        b_lower = t.branch.lower()
+        if b_lower in seen_target_branches:
+            raise ConfigError(
+                f"Duplicate target branch name detected (case-insensitive): '{t.branch}'"
+            )
+        seen_target_branches.add(b_lower)
+
+    # --- landing_branch -------------------------------------------------------
+    raw_landing = data.get("landing_branch")
+    if raw_landing is None:
+        landing_branch = LandingBranchConfig(enabled=True, name="main")
+    elif not isinstance(raw_landing, dict):
+        raise ConfigError("landing_branch must be a JSON object.")
+    else:
+        enabled = raw_landing.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ConfigError("landing_branch.enabled must be a boolean.")
+        name = raw_landing.get("name", "main")
+        if not isinstance(name, str):
+            raise ConfigError("landing_branch.name must be a string.")
+        landing_branch = LandingBranchConfig(enabled=enabled, name=name)
+
+    # Validate branch name rules and check against target branch duplicates
+    if landing_branch.enabled:
+        if not is_valid_git_branch_name(landing_branch.name):
+            raise ConfigError(
+                f"landing_branch.name '{landing_branch.name}' is not a valid Git branch name."
+            )
+        norm_landing = landing_branch.name.lower()
+        for t in targets:
+            if t.branch.lower() == norm_landing:
+                raise ConfigError(
+                    f"landing_branch.name '{landing_branch.name}' duplicates target branch '{t.branch}'."
+                )
+
     return ModConfig(
         mod_id=mod_id,
         mod_name=mod_name,
@@ -276,7 +330,9 @@ def load_mod_config(path: Path | str) -> ModConfig:
         homepage=data.get("homepage", ""),
         issue_tracker=data.get("issue_tracker", ""),
         icon=data.get("icon", ""),
+        landing_branch=landing_branch,
     )
+
 
 
 def load_template_descriptor(template_dir: Path | str) -> TemplateDescriptor | None:

@@ -96,6 +96,11 @@ class DashboardScreen(QWidget):
         self._lbl_summary_icon = QLabel("—")
         self._lbl_summary_license = QLabel("—")
 
+        self._lbl_summary_landing_branch = QLabel("—")
+        self._lbl_summary_landing_readme = QLabel("—")
+        self._lbl_summary_landing_license = QLabel("—")
+        self._lbl_summary_landing_icon = QLabel("—")
+
         self._btn_open_license = QPushButton("Open Folder")
         self._btn_open_license.setFixedWidth(80)
         self._btn_open_license.clicked.connect(self._open_license_folder)
@@ -114,6 +119,11 @@ class DashboardScreen(QWidget):
         summary_form.addRow("Assets:", self._lbl_summary_assets)
         summary_form.addRow("Mod Icon:", self._lbl_summary_icon)
         summary_form.addRow("License:", license_layout)
+        summary_form.addRow("Landing Branch:", self._lbl_summary_landing_branch)
+        summary_form.addRow("Landing README:", self._lbl_summary_landing_readme)
+        summary_form.addRow("Landing License:", self._lbl_summary_landing_license)
+        summary_form.addRow("Landing Icon:", self._lbl_summary_landing_icon)
+
 
         root.addWidget(summary_group)
 
@@ -342,6 +352,96 @@ class DashboardScreen(QWidget):
             except Exception as exc:
                 self._lbl_summary_license.setText(f"Scan failed: {exc}")
                 self._lbl_summary_license.setStyleSheet("color: #b00; font-weight: bold;")
+
+        # Landing branch Workbench Summary checks
+        config = None
+        config_path = workspace_dir / "DETAILS" / "modsmith.json"
+        if config_path.exists():
+            try:
+                from modsmith.config import load_mod_config
+                config = load_mod_config(config_path)
+            except Exception:
+                pass
+
+        if config is not None:
+            landing = config.landing_branch
+            if landing.enabled:
+                self._lbl_summary_landing_branch.setText(f"Enabled: {landing.name}")
+                self._lbl_summary_landing_branch.setStyleSheet("color: #060; font-weight: bold;")
+
+                # Workspace README checks
+                readme_file = workspace_dir / "README" / "README.md"
+                if not readme_file.exists():
+                    readme_dir = workspace_dir / "README"
+                    if readme_dir.is_dir():
+                        md_files = list(readme_dir.glob("*.md"))
+                        if md_files:
+                            readme_file = md_files[0]
+
+                readme_empty = True
+                if readme_file.exists():
+                    try:
+                        content = readme_file.read_text(encoding="utf-8")
+                        if content.strip():
+                            readme_empty = False
+                    except Exception:
+                        pass
+
+                if readme_empty:
+                    self._lbl_summary_landing_readme.setText("Fallback heading")
+                    self._lbl_summary_landing_readme.setStyleSheet("color: #b87800; font-weight: bold;")
+                else:
+                    self._lbl_summary_landing_readme.setText(f"Workspace README ({readme_file.name})")
+                    self._lbl_summary_landing_readme.setStyleSheet("color: #060; font-weight: bold;")
+
+                # License status check
+                license_dir = workspace_dir / "LICENSE"
+                license_file = None
+                if license_dir.is_dir():
+                    try:
+                        from modsmith.context import discover_license_file
+                        license_file = discover_license_file(license_dir)
+                    except Exception:
+                        pass
+
+                if license_file:
+                    self._lbl_summary_landing_license.setText(license_file.name)
+                    self._lbl_summary_landing_license.setStyleSheet("color: #060; font-weight: bold;")
+                else:
+                    self._lbl_summary_landing_license.setText("None")
+                    self._lbl_summary_landing_license.setStyleSheet("color: #888; font-weight: bold;")
+
+                # Icon status check
+                if config.icon:
+                    icon_path = workspace_dir / config.icon.replace("/", os.sep)
+                    if icon_path.is_file():
+                        self._lbl_summary_landing_icon.setText(config.icon)
+                        self._lbl_summary_landing_icon.setStyleSheet("color: #060; font-weight: bold;")
+                    else:
+                        self._lbl_summary_landing_icon.setText(f"{config.icon} (missing)")
+                        self._lbl_summary_landing_icon.setStyleSheet("color: #b87800; font-weight: bold;")
+                else:
+                    self._lbl_summary_landing_icon.setText("None")
+                    self._lbl_summary_landing_icon.setStyleSheet("color: #888; font-weight: bold;")
+            else:
+                self._lbl_summary_landing_branch.setText("Disabled")
+                self._lbl_summary_landing_branch.setStyleSheet("color: #888; font-weight: bold;")
+                self._lbl_summary_landing_readme.setText("—")
+                self._lbl_summary_landing_readme.setStyleSheet("color: inherit;")
+                self._lbl_summary_landing_license.setText("—")
+                self._lbl_summary_landing_license.setStyleSheet("color: inherit;")
+                self._lbl_summary_landing_icon.setText("—")
+                self._lbl_summary_landing_icon.setStyleSheet("color: inherit;")
+        else:
+            self._lbl_summary_landing_branch.setText("Unknown (modsmith.json invalid/missing)")
+            self._lbl_summary_landing_branch.setStyleSheet("color: #b00; font-weight: bold;")
+            self._lbl_summary_landing_readme.setText("—")
+            self._lbl_summary_landing_readme.setStyleSheet("color: inherit;")
+            self._lbl_summary_landing_license.setText("—")
+            self._lbl_summary_landing_license.setStyleSheet("color: inherit;")
+            self._lbl_summary_landing_icon.setText("—")
+            self._lbl_summary_landing_icon.setStyleSheet("color: inherit;")
+
 
     def _refresh_dist(self, workspace_dir: Path) -> None:
         dist_dir = workspace_dir / "DIST"

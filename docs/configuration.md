@@ -19,6 +19,9 @@ ModSmith reads your mod definition and compilation targets from `WORKSPACE/DETAI
 * **`homepage`** (Optional, string): URL pointing to your mod's homepage or website.
 * **`issue_tracker`** (Optional, string): URL pointing to where bugs and issues can be reported.
 * **`icon`** (Optional, string): Relative path to a mod icon image under `WORKSPACE/` (e.g. `ASSETS/icon.png`). PNG is recommended. During generation, PNG icons are automatically injected into loader-specific metadata files.
+* **`landing_branch`** (Optional, object): Configuration for the repository's GitHub/default presentation branch. If omitted, it defaults to being enabled with the name `main`.
+  * **`enabled`** (boolean): Set to `true` to generate the landing branch (default: `true`).
+  * **`name`** (string): The Git branch name for the landing branch (default: `main`). Must be a valid Git branch name and must not duplicate any target branch names.
 * **`targets`** (Required, array of objects): A list of build configurations representing loaders and Minecraft versions.
 
 ### Target-Specific Fields
@@ -36,7 +39,7 @@ Each target in the `targets` array contains the following fields:
 
 ## Complete Example
 
-Below is a complete `modsmith.json` defining two targets: Forge for Minecraft 1.20.1 and Fabric for Minecraft 1.21.2:
+Below is a complete `modsmith.json` defining two targets: Forge for Minecraft 1.20.1 and Fabric for Minecraft 1.21.2, along with a custom configured landing branch:
 
 ```json
 {
@@ -52,6 +55,10 @@ Below is a complete `modsmith.json` defining two targets: Forge for Minecraft 1.
   "issue_tracker": "https://github.com/ardaryusz/EasyPeasyGunpowder/issues",
   "icon": "ASSETS/icon.png",
   "output_repo_name": "EasyPeasyGunpowder",
+  "landing_branch": {
+    "enabled": true,
+    "name": "main"
+  },
   "targets": [
     {
       "loader": "forge",

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 import shutil
-from modsmith.utils import safe_delete_tree
+from modsmith.utils import safe_delete_tree, run_subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -35,6 +35,13 @@ from modsmith.git_ops import (
     git_checkout,
     git_list_branches,
     write_gitignore,
+    git_has_staged_changes,
+    git_is_file_tracked,
+    git_is_file_locally_modified,
+    git_last_commit_message,
+    git_rm_file,
+    git_rm_all_tracked,
+    git_current_branch,
 )
 
 
@@ -46,6 +53,9 @@ class GenerateResult:
     generated_branches: list[str]
     warnings: list[str]
     dry_run: bool = False
+    landing_branch: str | None = None
+    checked_out_branch: str | None = None
+
 
 
 class GenerateError(Exception):
@@ -161,6 +171,31 @@ def clear_working_tree_selectively(repo_dir: Path, template_dir: Path) -> None:
                     pass
 
 
+def _can_safely_delete_stale_file(repo_dir: Path, filename: str, currently_selected_paths: set[str]) -> bool:
+    if filename in currently_selected_paths:
+        return False
+    if not (repo_dir / filename).exists():
+        return False
+    if not git_is_file_tracked(repo_dir, filename):
+        return False
+    # Check last commit message
+    msg = git_last_commit_message(repo_dir, filename)
+    if msg not in ("Initialize landing branch", "Update landing branch"):
+        return False
+    # Check if modified or staged
+    if git_is_file_locally_modified(repo_dir, filename):
+        return False
+    return True
+
+
+def _verify_overwrite_safe(repo_dir: Path, filename: str):
+    if git_is_file_locally_modified(repo_dir, filename):
+        raise GenerateError(
+            f"Cannot update landing {filename} because it contains uncommitted local changes. "
+            f"Commit, discard, or copy those changes into the workspace sources before regenerating."
+        )
+
+
 def generate(
     workspace_dir: Path,
     templates_dir: Path,
@@ -232,12 +267,99 @@ def generate(
 
     # 5. Handle dry_run (completely side-effect free)
     if dry_run:
+        landing_branch_name = None
+        landing_branch_action = None
+        landing_files_to_write = []
+        fallback_readme = False
+        selected_license = None
+        icon_status = "None"
+        final_checkout = selected_targets[0].branch if selected_targets else None
+
+        if config.landing_branch.enabled:
+            landing_branch_name = config.landing_branch.name
+            final_checkout = landing_branch_name
+            
+            existing_branches = []
+            if output_repo_dir.exists():
+                try:
+                    existing_branches = git_list_branches(output_repo_dir)
+                except Exception:
+                    pass
+            
+            if landing_branch_name in existing_branches:
+                landing_branch_action = "update"
+            else:
+                landing_branch_action = "create"
+
+            landing_files_to_write.append("README.md")
+            landing_files_to_write.append(".gitignore")
+
+            readme_dir = mod_ctx.readme_dir
+            readme_empty = True
+            if readme_dir.exists():
+                readme_src = readme_dir / "README.md"
+                if readme_src.exists():
+                    try:
+                        content = readme_src.read_text(encoding="utf-8")
+                        if content.strip():
+                            readme_empty = False
+                    except Exception:
+                        pass
+                if readme_empty:
+                    md_files = list(readme_dir.glob("*.md"))
+                    if md_files:
+                        try:
+                            content = md_files[0].read_text(encoding="utf-8")
+                            if content.strip():
+                                readme_empty = False
+                        except Exception:
+                            pass
+            if readme_empty:
+                fallback_readme = True
+
+            license_dir = mod_ctx.license_dir
+            license_file = None
+            if license_dir.is_dir():
+                try:
+                    license_file = discover_license_file(license_dir)
+                except Exception:
+                    pass
+            if license_file:
+                selected_license = license_file.name
+                landing_files_to_write.append(f"LICENSE{license_file.suffix.lower()}")
+
+            if config.icon:
+                icon_src = workspace_dir / config.icon.replace("/", os.sep)
+                if icon_src.is_file():
+                    icon_status = config.icon
+                    landing_files_to_write.append("icon.png")
+                else:
+                    icon_status = f"{config.icon} (missing)"
+            else:
+                icon_status = "None"
+
+            print(f"[DRY RUN] Landing branch: {landing_branch_name} ({landing_branch_action})")
+            print(f"[DRY RUN] Intended files to write: {', '.join(landing_files_to_write)}")
+            if fallback_readme:
+                print("[DRY RUN] Fallback README: Yes (mod name heading only)")
+            else:
+                print("[DRY RUN] Fallback README: No (workspace README will be copied)")
+            print(f"[DRY RUN] Selected license: {selected_license or 'None'}")
+            print(f"[DRY RUN] Icon status: {icon_status}")
+            print(f"[DRY RUN] Intended checkout branch: {final_checkout}")
+        else:
+            print("[DRY RUN] Landing branch generation: Disabled")
+            print(f"[DRY RUN] Intended checkout branch: {final_checkout}")
+
         return GenerateResult(
             repo_dir=output_repo_dir,
             generated_branches=[tc.branch for tc in selected_targets],
             warnings=warnings,
             dry_run=True,
+            landing_branch=landing_branch_name,
+            checked_out_branch=final_checkout,
         )
+
 
     # 6. Real run
     # Simple overwrite check
@@ -271,6 +393,69 @@ def generate(
         git_init(output_repo_dir)
     except Exception as exc:
         raise ValueError(f"Failed to initialize Git repository: {exc}")
+
+    # Preflight Checks if landing branch is enabled
+    if config.landing_branch.enabled:
+        # Preflight Check 1: Index staged check
+        if git_has_staged_changes(output_repo_dir):
+            raise GenerateError(
+                "Staged changes already exist in the generated repository. "
+                "Commit or unstage them before generating the landing branch."
+            )
+
+        # Preflight Check 2: Untracked managed-path collision check
+        existing_branches = git_list_branches(output_repo_dir)
+        landing_exists = config.landing_branch.name in existing_branches
+        if not landing_exists:
+            managed_paths = [
+                "README.md",
+                "LICENSE", "LICENSE.md", "LICENSE.txt", "LICENSE.html", "LICENSE.docx",
+                "icon.png",
+                ".gitignore"
+            ]
+            for name in managed_paths:
+                p = output_repo_dir / name
+                if p.exists() and not git_is_file_tracked(output_repo_dir, name):
+                    raise GenerateError(
+                        f"Cannot create landing branch because untracked file '{name}' "
+                        f"already exists in the generated repository. "
+                        f"Move, remove, or commit the file before generating the landing branch."
+                    )
+
+        # Preflight Check 3: Active modifications check (if landing branch is currently checked out)
+        try:
+            current_branch = git_current_branch(output_repo_dir)
+        except Exception:
+            current_branch = ""
+        if current_branch == config.landing_branch.name:
+            managed_paths = [
+                "README.md",
+                "LICENSE", "LICENSE.md", "LICENSE.txt", "LICENSE.html", "LICENSE.docx",
+                "icon.png",
+                ".gitignore"
+            ]
+            for name in managed_paths:
+                p = output_repo_dir / name
+                if p.exists() and git_is_file_locally_modified(output_repo_dir, name):
+                    raise GenerateError(
+                        f"Cannot update landing {name} because it contains uncommitted local changes. "
+                        f"Commit, discard, or copy those changes into the workspace sources before regenerating."
+                    )
+
+    # Back up any unrelated untracked user files present in the repo before generation starts
+    untracked_files_backup = {}
+    if output_repo_dir.exists():
+        try:
+            from modsmith.utils import run_process
+            res = run_process(["git", "ls-files", "--others", "--exclude-standard"], cwd=output_repo_dir, capture_output=True)
+            for line in res.stdout.splitlines():
+                line = line.strip()
+                if line:
+                    p = output_repo_dir / line
+                    if p.is_file():
+                        untracked_files_backup[line] = p.read_bytes()
+        except Exception:
+            pass
 
     # Load recipes
     try:
@@ -449,21 +634,213 @@ def generate(
         # Stage and commit
         try:
             git_add_all(output_repo_dir)
-            commit_msg = f"Generate {tc.loader} {tc.mc_range} version"
-            git_commit(output_repo_dir, commit_msg)
+            if git_has_staged_changes(output_repo_dir):
+                commit_msg = f"Generate {tc.loader} {tc.mc_range} version"
+                git_commit(output_repo_dir, commit_msg)
         except Exception as exc:
             raise ValueError(f"Failed to commit changes to '{tc.branch}': {exc}")
 
     # Checkout the first branch generated at the end
+    final_checked_out = None
     if selected_targets:
         try:
             git_checkout(output_repo_dir, selected_targets[0].branch)
+            final_checked_out = selected_targets[0].branch
         except Exception as exc:
             warnings.append(f"Failed to checkout initial branch '{selected_targets[0].branch}' at the end: {exc}")
+
+    # Generate and checkout landing branch if enabled
+    landing_branch_name = None
+    if config.landing_branch.enabled:
+        landing_branch_name = config.landing_branch.name
+        
+        existing_branches = git_list_branches(output_repo_dir)
+        landing_exists = landing_branch_name in existing_branches
+
+        # Record originally checked-out branch for failure recovery
+        original_branch = None
+        try:
+            original_branch = git_current_branch(output_repo_dir)
+        except Exception:
+            pass
+
+        files_written_this_attempt = []
+        try:
+            # Switch to landing branch
+            if landing_exists:
+                git_checkout(output_repo_dir, landing_branch_name)
+            else:
+                git_create_orphan_branch(output_repo_dir, landing_branch_name)
+                git_rm_all_tracked(output_repo_dir)
+
+            # Restore backup of untracked files
+            for rel_path, content in untracked_files_backup.items():
+                dest_p = output_repo_dir / rel_path
+                try:
+                    dest_p.parent.mkdir(parents=True, exist_ok=True)
+                    dest_p.write_bytes(content)
+                except Exception:
+                    pass
+
+            # Determine currently selected output paths
+            currently_selected_paths = {
+                "README.md",
+                ".gitignore"
+            }
+            if license_file:
+                currently_selected_paths.add(f"LICENSE{license_file.suffix.lower()}")
+            if config.icon:
+                currently_selected_paths.add("icon.png")
+
+            # conflict verification checks before writing/deleting
+            # --- Write README.md ---
+            readme_dest = output_repo_dir / "README.md"
+            _verify_overwrite_safe(output_repo_dir, "README.md")
+            
+            readme_written = False
+            readme_dir = mod_ctx.readme_dir
+            if readme_dir.exists():
+                readme_src = readme_dir / "README.md"
+                if readme_src.exists():
+                    try:
+                        content = readme_src.read_text(encoding="utf-8")
+                        if content.strip():
+                            shutil.copy2(readme_src, readme_dest)
+                            files_written_this_attempt.append(readme_dest)
+                            readme_written = True
+                    except Exception as exc:
+                        raise GenerateError(f"Workspace README file is unreadable: {exc}")
+                
+                if not readme_written:
+                    md_files = list(readme_dir.glob("*.md"))
+                    if md_files:
+                        try:
+                            content = md_files[0].read_text(encoding="utf-8")
+                            if content.strip():
+                                shutil.copy2(md_files[0], readme_dest)
+                                files_written_this_attempt.append(readme_dest)
+                                readme_written = True
+                        except Exception as exc:
+                            raise GenerateError(f"Workspace README file {md_files[0].name} is unreadable: {exc}")
+            
+            if not readme_written:
+                # Fallback README.md
+                content = f"# {config.mod_name}\n"
+                readme_dest.write_text(content, encoding="utf-8")
+                files_written_this_attempt.append(readme_dest)
+
+            # Ensure README ends with newline
+            try:
+                content = readme_dest.read_text(encoding="utf-8")
+                if not content.endswith("\n"):
+                    readme_dest.write_text(content + "\n", encoding="utf-8")
+            except Exception:
+                pass
+
+            # --- Write LICENSE ---
+            if license_file is not None:
+                license_dest_name = f"LICENSE{license_file.suffix.lower()}"
+                _verify_overwrite_safe(output_repo_dir, license_dest_name)
+                dest_path = output_repo_dir / license_dest_name
+                try:
+                    shutil.copy2(license_file, dest_path)
+                    files_written_this_attempt.append(dest_path)
+                except Exception as exc:
+                    raise GenerateError(f"Workspace LICENSE file {license_file.name} is unreadable: {exc}")
+
+            # --- Write Mod Icon ---
+            if config.icon:
+                _verify_overwrite_safe(output_repo_dir, "icon.png")
+                icon_src = workspace_dir / config.icon.replace("/", os.sep)
+                if icon_src.is_file():
+                    try:
+                        shutil.copy2(icon_src, output_repo_dir / "icon.png")
+                        files_written_this_attempt.append(output_repo_dir / "icon.png")
+                    except Exception as exc:
+                        raise GenerateError(f"Configured mod icon '{config.icon}' is unreadable: {exc}")
+
+            # --- Write .gitignore ---
+            _verify_overwrite_safe(output_repo_dir, ".gitignore")
+            gitignore_content = (
+                "# IDE\n"
+                ".idea/\n"
+                ".vscode/\n"
+                "*.iml\n\n"
+                "# OS\n"
+                ".DS_Store\n"
+                "Thumbs.db\n\n"
+                "# ModSmith\n"
+                "*.log\n"
+            )
+            gitignore_dest = output_repo_dir / ".gitignore"
+            gitignore_dest.write_text(gitignore_content, encoding="utf-8")
+            files_written_this_attempt.append(gitignore_dest)
+
+            # --- Stale files deletion ---
+            all_managed_paths = [
+                "README.md",
+                "LICENSE", "LICENSE.md", "LICENSE.txt", "LICENSE.html", "LICENSE.docx",
+                "icon.png",
+                ".gitignore"
+            ]
+            for filename in all_managed_paths:
+                if filename not in currently_selected_paths:
+                    p = output_repo_dir / filename
+                    if p.exists():
+                        if _can_safely_delete_stale_file(output_repo_dir, filename, currently_selected_paths):
+                            git_rm_file(output_repo_dir, filename)
+                        else:
+                            warnings.append(
+                                f"Preserving landing {filename}: ownership or local state is ambiguous."
+                            )
+
+            # Stage only explicitly written files
+            for p_written in files_written_this_attempt:
+                rel_p = str(p_written.relative_to(output_repo_dir))
+                run_subprocess(["git", "add", rel_p], cwd=output_repo_dir)
+
+            # Commit staged changes if there are any
+            if git_has_staged_changes(output_repo_dir):
+                msg = "Initialize landing branch" if not landing_exists else "Update landing branch"
+                git_commit(output_repo_dir, msg)
+
+            final_checked_out = landing_branch_name
+
+        except Exception as exc:
+            # 1. Unlink files written this attempt
+            for p_written in files_written_this_attempt:
+                try:
+                    if p_written.exists():
+                        p_written.unlink()
+                except Exception:
+                    pass
+            # 2. Reset staged changes on landing branch
+            try:
+                for p_written in files_written_this_attempt:
+                    rel_p = str(p_written.relative_to(output_repo_dir))
+                    run_subprocess(["git", "reset", "HEAD", "--", rel_p], cwd=output_repo_dir)
+            except Exception:
+                pass
+            # 3. Switch back to original branch
+            if original_branch:
+                try:
+                    git_checkout(output_repo_dir, original_branch)
+                except Exception:
+                    pass
+            # 4. Delete the incomplete orphan branch reference if one exists
+            if not landing_exists:
+                try:
+                    run_subprocess(["git", "branch", "-D", landing_branch_name], cwd=output_repo_dir)
+                except Exception:
+                    pass
+
+            raise exc
 
     return GenerateResult(
         repo_dir=output_repo_dir,
         generated_branches=[tc.branch for tc in selected_targets],
         warnings=warnings,
         dry_run=False,
+        landing_branch=landing_branch_name,
+        checked_out_branch=final_checked_out,
     )

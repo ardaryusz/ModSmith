@@ -343,14 +343,21 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
     if res.dry_run:
         print(f"Dry run complete. Planned repository at: {res.repo_dir}")
-        print("Planned branches:")
-        for b in res.generated_branches:
-            print(f"  - {b}")
     else:
         print(f"Repository generated successfully at: {res.repo_dir}")
-        print("Generated branches:")
-        for b in res.generated_branches:
-            print(f"  - {b}")
+
+    print("Generated target branches:")
+    for b in res.generated_branches:
+        print(f"  - {b}")
+
+    if res.landing_branch:
+        print(f"\nLanding branch:\n  - {res.landing_branch}")
+        print(f"\nChecked out:\n  - {res.landing_branch}")
+    else:
+        first_target = res.generated_branches[0] if res.generated_branches else ""
+        print(f"\nChecked out:\n  - {first_target}")
+
+    if not res.dry_run:
         print("\nNext steps:")
         try:
             rel = res.repo_dir.relative_to(Path.cwd())
@@ -360,6 +367,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
         print("  - Build the mods:   python -m modsmith build")
 
     return 0
+
 
 
 

@@ -385,6 +385,7 @@ class TestRunProcess(unittest.TestCase):
         self.assertFalse(_hide_windows_globally)
         
         with patch("modsmith_gui.app.QApplication"), \
+             patch("modsmith_gui.app.QIcon"), \
              patch("modsmith_gui.main_window.MainWindow"):
             try:
                 from modsmith_gui.app import run_app
@@ -395,5 +396,40 @@ class TestRunProcess(unittest.TestCase):
                 set_hide_windows(False)
 
 
+    def test_is_valid_git_branch_name(self):
+        from modsmith.utils import is_valid_git_branch_name
+
+        # Valid names
+        self.assertTrue(is_valid_git_branch_name("main"))
+        self.assertTrue(is_valid_git_branch_name("master"))
+        self.assertTrue(is_valid_git_branch_name("feature/branch-1"))
+        self.assertTrue(is_valid_git_branch_name("release/1.0.0"))
+        self.assertTrue(is_valid_git_branch_name("dev"))
+
+        # Invalid names
+        self.assertFalse(is_valid_git_branch_name(""))
+        self.assertFalse(is_valid_git_branch_name("   "))
+        self.assertFalse(is_valid_git_branch_name("-branch"))  # leading hyphen
+        self.assertFalse(is_valid_git_branch_name("/branch"))  # leading slash
+        self.assertFalse(is_valid_git_branch_name("branch/"))  # trailing slash
+        self.assertFalse(is_valid_git_branch_name("branch."))   # trailing dot
+        self.assertFalse(is_valid_git_branch_name("my..branch")) # double dots
+        self.assertFalse(is_valid_git_branch_name("branch/with/@{")) # @{ sequence
+        self.assertFalse(is_valid_git_branch_name("@")) # single @
+        self.assertFalse(is_valid_git_branch_name("branch name")) # space
+        self.assertFalse(is_valid_git_branch_name("branch~1")) # tilde
+        self.assertFalse(is_valid_git_branch_name("branch^")) # caret
+        self.assertFalse(is_valid_git_branch_name("branch:1")) # colon
+        self.assertFalse(is_valid_git_branch_name("branch?")) # question mark
+        self.assertFalse(is_valid_git_branch_name("branch*")) # asterisk
+        self.assertFalse(is_valid_git_branch_name("branch[")) # bracket
+        self.assertFalse(is_valid_git_branch_name("branch\\name")) # backslash
+        self.assertFalse(is_valid_git_branch_name("branch.lock")) # ends with .lock
+        self.assertFalse(is_valid_git_branch_name("my/branch.lock")) # ends with .lock
+        self.assertFalse(is_valid_git_branch_name("my/.branch")) # starts with dot component
+        self.assertFalse(is_valid_git_branch_name("my//branch")) # consecutive slashes
+
+
 if __name__ == "__main__":
     unittest.main()
+

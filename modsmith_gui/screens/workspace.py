@@ -231,6 +231,29 @@ class WorkspaceScreen(QWidget):
         icon_layout.addLayout(icon_btn_row)
         layout.addWidget(icon_group)
 
+        # --- Repository / Output GroupBox ---
+        repo_group = QGroupBox("Repository / Output")
+        repo_form = QFormLayout(repo_group)
+        repo_form.setContentsMargins(10, 8, 10, 8)
+        repo_form.setSpacing(6)
+        repo_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        from PySide6.QtWidgets import QCheckBox
+        self._chk_landing_branch = QCheckBox("Create landing branch")
+        self._chk_landing_branch.setChecked(True)
+
+        self._txt_landing_branch_name = QLineEdit()
+        self._txt_landing_branch_name.setText("main")
+        self._txt_landing_branch_name.setPlaceholderText("e.g. main")
+
+        self._chk_landing_branch.toggled.connect(self._txt_landing_branch_name.setEnabled)
+
+        repo_form.addRow("", self._chk_landing_branch)
+        repo_form.addRow("Landing Branch Name:", self._txt_landing_branch_name)
+
+        layout.addWidget(repo_group)
+
+
         # Internal icon state (relative path like "ASSETS/icon.png")
         self._icon_value: str = ""
 
@@ -318,6 +341,10 @@ class WorkspaceScreen(QWidget):
 
         self._set_icon_state("")
 
+        self._chk_landing_branch.setChecked(True)
+        self._txt_landing_branch_name.setText("main")
+        self._txt_landing_branch_name.setEnabled(True)
+
         self._rebuild_targets_table([])
         self._add_target_row()  # Add one clean row
 
@@ -337,6 +364,16 @@ class WorkspaceScreen(QWidget):
         self._txt_issue_tracker.setText(data.get("issue_tracker", ""))
 
         self._set_icon_state(data.get("icon", ""))
+
+        landing_data = data.get("landing_branch", {})
+        if not isinstance(landing_data, dict):
+            landing_data = {}
+        enabled = landing_data.get("enabled", True)
+        name = landing_data.get("name", "main")
+
+        self._chk_landing_branch.setChecked(enabled)
+        self._txt_landing_branch_name.setText(name)
+        self._txt_landing_branch_name.setEnabled(enabled)
 
         raw_targets = data.get("targets", [])
         self._rebuild_targets_table(raw_targets)
@@ -680,9 +717,42 @@ class WorkspaceScreen(QWidget):
                 "minecraft_version_range": minecraft_version_range
             })
 
+        # Validate landing branch branch name if enabled
+        landing_enabled = self._chk_landing_branch.isChecked()
+        landing_name = self._txt_landing_branch_name.text().strip()
+
+        if landing_enabled:
+            if not landing_name:
+                QMessageBox.critical(self, "Save Error", "Landing branch name must not be empty.")
+                return False
+            
+            from modsmith.utils import is_valid_git_branch_name
+            if not is_valid_git_branch_name(landing_name):
+                QMessageBox.critical(self, "Save Error", f"Landing branch name '{landing_name}' is not a valid Git branch name.")
+                return False
+            
+            # Check duplicate target branch name
+            for r in range(self._table.rowCount()):
+                branch_item = self._table.item(r, 2)
+                if branch_item:
+                    t_branch = branch_item.text().strip()
+                    if t_branch.lower() == landing_name.lower():
+                        QMessageBox.critical(
+                            self,
+                            "Save Error",
+                            f"Landing branch name '{landing_name}' duplicates target branch '{t_branch}'."
+                        )
+                        return False
+
+        config_data["landing_branch"] = {
+            "enabled": landing_enabled,
+            "name": landing_name
+        }
+
         if not config_data["targets"]:
             QMessageBox.critical(self, "Save Error", "Workspace requires at least one target.")
             return False
+
 
         # 1. Automatic backup creation (.bak) before overwrite
         if json_path.exists():

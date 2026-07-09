@@ -284,3 +284,41 @@ def safe_delete_tree(path: Path) -> None:
             "  2. Stop Gradle daemons:  cd MODS\\<repo> && gradlew.bat --stop\n"
             "  3. Delete the folder manually, then re-run generate."
         )
+
+
+def is_valid_git_branch_name(name: str) -> bool:
+    """Validate branch names against standard Git ref character and syntax rules."""
+    if not name or not isinstance(name, str):
+        return False
+    if not name.strip():
+        return False
+    if name.startswith("-"):
+        return False
+    if name.startswith("/") or name.endswith("/"):
+        return False
+    if name.endswith("."):
+        return False
+    if ".." in name:
+        return False
+    if "@{" in name:
+        return False
+    if name == "@":
+        return False
+    # Check invalid characters: space, tilde, caret, colon, question, asterisk, open bracket, backslash, control/delete
+    invalid_chars = {' ', '~', '^', ':', '?', '*', '[', '\\'}
+    for char in name:
+        if char in invalid_chars:
+            return False
+        if ord(char) <= 31 or ord(char) == 127:
+            return False
+    # Check components
+    parts = name.split("/")
+    for part in parts:
+        if not part:
+            return False
+        if part.startswith("."):
+            return False
+        if part.endswith(".lock"):
+            return False
+    return True
+

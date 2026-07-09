@@ -13,8 +13,10 @@ from modsmith.generator import (
     GenerateResult,
     is_legacy_recipe_version,
     generate,
+    GenerateError,
 )
 from modsmith.git_ops import git_current_branch, git_list_branches, git_checkout
+from modsmith.utils import run_subprocess
 
 
 class TestIsLegacyRecipeVersion(unittest.TestCase):
@@ -67,6 +69,10 @@ class TestGenerator(unittest.TestCase):
             "license": "MIT",
             "description": "A test mod.",
             "output_repo_name": "TestModRepo",
+            "landing_branch": {
+                "enabled": False,
+                "name": "main"
+            },
             "targets": [
                 {
                     "loader": "forge",
@@ -317,5 +323,319 @@ class TestGenerator(unittest.TestCase):
         self.assertNotIn("item", recipe_content_fabric["result"])
 
 
+class TestLandingBranchGeneration(unittest.TestCase):
+    """Landing branch generation and safety lifecycle tests."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.workspace = self.root / "WORKSPACE"
+        self.details = self.workspace / "DETAILS"
+        self.recipes = self.workspace / "RECIPES"
+        self.templates = self.root / "MODTEMPLATES"
+        self.mods = self.root / "MODS"
+
+        # Write clean mock configurations and template folders
+        self.details.mkdir(parents=True, exist_ok=True)
+        self.recipes.mkdir(parents=True, exist_ok=True)
+        self.templates.mkdir(parents=True, exist_ok=True)
+        self.mods.mkdir(parents=True, exist_ok=True)
+
+        self.cfg_data = {
+            "mod_id": "testmod",
+            "mod_name": "Test Mod",
+            "mod_version": "1.0.0",
+            "group": "com.example.testmod",
+            "package": "com.example.testmod",
+            "authors": "tester",
+            "license": "MIT",
+            "description": "A test mod.",
+            "output_repo_name": "TestModRepo",
+            "landing_branch": {
+                "enabled": True,
+                "name": "main"
+            },
+            "targets": [
+                {
+                    "loader": "fabric",
+                    "template": "fabric-1.21",
+                    "branch": "fabric-1.21",
+                    "mc_range": "1.21",
+                    "minecraft_version": "1.21",
+                },
+            ],
+        }
+
+        # Write config
+        (self.details / "modsmith.json").write_text(
+            json.dumps(self.cfg_data, indent=2), encoding="utf-8"
+        )
+
+        # Write simple recipes
+        recipe_data = {
+            "type": "minecraft:crafting_shaped",
+            "key": {"C": {"item": "minecraft:charcoal"}},
+            "result": {"item": "minecraft:gunpowder", "count": 1},
+        }
+        (self.recipes / "recipe1.json").write_text(
+            json.dumps(recipe_data), encoding="utf-8"
+        )
+
+        # Write template folders with all required verification stubs
+        for t in self.cfg_data["targets"]:
+            tdir = self.templates / t["template"]
+            tdir.mkdir(parents=True, exist_ok=True)
+            (tdir / "build.gradle").write_text("plugins { id 'java' }\n", encoding="utf-8")
+            (tdir / "gradle.properties").write_text("mod_version=1.0.0\n", encoding="utf-8")
+            
+            desc_data = {
+                "loader": t["loader"],
+                "minecraft_version": t["minecraft_version"],
+                "recipe_folder": "recipe",
+                "recipe_format": "modern_1_21"
+            }
+            (tdir / "modsmith-template.json").write_text(
+                json.dumps(desc_data), encoding="utf-8"
+            )
+            # Gradle wrapper stubs
+            (tdir / "gradlew.bat").write_text("@echo off\n", encoding="utf-8")
+            (tdir / "gradlew").write_text("#!/bin/sh\n", encoding="utf-8")
+            wrapper_dir = tdir / "gradle" / "wrapper"
+            wrapper_dir.mkdir(parents=True, exist_ok=True)
+            (wrapper_dir / "gradle-wrapper.jar").write_bytes(b"PK fake jar")
+            (wrapper_dir / "gradle-wrapper.properties").write_text("", encoding="utf-8")
+            # Loader metadata stubs
+            res_dir = tdir / "src" / "main" / "resources"
+            res_dir.mkdir(parents=True, exist_ok=True)
+            (res_dir / "fabric.mod.json").write_text(
+                '{"schemaVersion":1,"id":"placeholder","version":"1.0.0"}',
+                encoding="utf-8",
+            )
+
+        # 2. Workspace README
+        self.readme_dir = self.workspace / "README"
+        self.readme_dir.mkdir(exist_ok=True)
+        (self.readme_dir / "README.md").write_text("Hello from workspace README!", encoding="utf-8")
+
+        # 3. Workspace LICENSE
+        self.license_dir = self.workspace / "LICENSE"
+        self.license_dir.mkdir(exist_ok=True)
+        (self.license_dir / "LICENSE.md").write_text("License content", encoding="utf-8")
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_landing_branch_generation_enabled(self):
+        if shutil.which("git") is None:
+            self.skipTest("git is required for tests")
+
+        # Configure an icon in modsmith.json
+        cfg_path = self.workspace / "DETAILS" / "modsmith.json"
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        data["icon"] = "ASSETS/icon.png"
+        cfg_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        # Create the icon file in workspace
+        assets_dir = self.workspace / "ASSETS"
+        assets_dir.mkdir()
+        icon_file = assets_dir / "icon.png"
+        icon_file.write_bytes(b"dummy icon bytes")
+
+        res = generate(self.workspace, self.templates, self.mods)
+
+        self.assertEqual(res.landing_branch, "main")
+        self.assertEqual(res.checked_out_branch, "main")
+
+        # Verify landing files exist in the repo
+        repo_dir = res.repo_dir
+        self.assertTrue((repo_dir / "README.md").exists())
+        self.assertEqual((repo_dir / "README.md").read_text(encoding="utf-8"), "Hello from workspace README!\n")
+        
+        self.assertTrue((repo_dir / "LICENSE.md").exists())
+        self.assertEqual((repo_dir / "LICENSE.md").read_text(encoding="utf-8"), "License content")
+
+        self.assertTrue((repo_dir / "icon.png").exists())
+        self.assertEqual((repo_dir / "icon.png").read_bytes(), b"dummy icon bytes")
+
+        self.assertTrue((repo_dir / ".gitignore").exists())
+        gitignore_text = (repo_dir / ".gitignore").read_text(encoding="utf-8")
+        self.assertTrue(gitignore_text.endswith("\n"))
+        self.assertIn("# IDE", gitignore_text)
+
+    def test_landing_branch_generation_disabled(self):
+        if shutil.which("git") is None:
+            self.skipTest("git is required for tests")
+
+        # Disable in config
+        cfg_path = self.workspace / "DETAILS" / "modsmith.json"
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        data["landing_branch"] = {"enabled": False, "name": "main"}
+        cfg_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        res = generate(self.workspace, self.templates, self.mods)
+        self.assertIsNone(res.landing_branch)
+        self.assertEqual(res.checked_out_branch, "fabric-1.21")
+
+        # Check main branch does not exist
+        branches = git_list_branches(res.repo_dir)
+        self.assertNotIn("main", branches)
+
+    def test_landing_branch_fallback_readme(self):
+        if shutil.which("git") is None:
+            self.skipTest("git is required for tests")
+
+        # Make workspace README empty
+        (self.readme_dir / "README.md").write_text("   \n  \t ", encoding="utf-8")
+
+        res = generate(self.workspace, self.templates, self.mods)
+        repo_dir = res.repo_dir
+        readme_content = (repo_dir / "README.md").read_text(encoding="utf-8")
+        self.assertEqual(readme_content, "# Test Mod\n")
+
+    def test_landing_branch_preflight_staged_changes_abort(self):
+        if shutil.which("git") is None:
+            self.skipTest("git is required for tests")
+
+        # Run first generation
+        res = generate(self.workspace, self.templates, self.mods)
+        repo_dir = res.repo_dir
+
+        # Let's stage a file manually in the repo on target branch
+        # We can create a dummy file and stage it
+        (repo_dir / "staged.txt").write_text("staged stuff", encoding="utf-8")
+        run_subprocess(["git", "add", "staged.txt"], cwd=repo_dir)
+
+        # Re-running generate should abort because staged changes exist
+        from modsmith.generator import GenerateError
+        with self.assertRaises(GenerateError) as ctx:
+            generate(self.workspace, self.templates, self.mods, force=True)
+        self.assertIn("Staged changes already exist in the generated repository", str(ctx.exception))
+
+    def test_landing_branch_preflight_untracked_collision_abort(self):
+        if shutil.which("git") is None:
+            self.skipTest("git is required for tests")
+
+        # 1. Run first generation with landing branch DISABLED so repo is created but landing branch does not exist yet
+        cfg_path = self.workspace / "DETAILS" / "modsmith.json"
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        data["landing_branch"] = {"enabled": False, "name": "main"}
+        cfg_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        
+        res = generate(self.workspace, self.templates, self.mods)
+        repo_dir = res.repo_dir
+
+        # 2. Put an UNTRACKED managed file (e.g. icon.png) in the repo directory on the current branch
+        (repo_dir / "icon.png").write_text("untracked icon", encoding="utf-8")
+
+        # 3. Put an UNTRACKED unrelated file in the repo (should NOT block creation)
+        (repo_dir / "unrelated.txt").write_text("unrelated untracked", encoding="utf-8")
+
+        # 4. Re-enable landing branch in config
+        data["landing_branch"] = {"enabled": True, "name": "main"}
+        cfg_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        # 5. Running generate should abort due to collision on icon.png
+        from modsmith.generator import GenerateError
+        with self.assertRaises(GenerateError) as ctx:
+            generate(self.workspace, self.templates, self.mods, force=True)
+        self.assertIn("untracked file 'icon.png' already exists", str(ctx.exception))
+
+        # Delete the untracked icon.png and verify it now succeeds
+        (repo_dir / "icon.png").unlink()
+        res2 = generate(self.workspace, self.templates, self.mods, force=True)
+        self.assertEqual(res2.landing_branch, "main")
+        # Unrelated file survives
+        self.assertTrue((repo_dir / "unrelated.txt").exists())
+
+    def test_landing_branch_conflict_on_overwrite_abort(self):
+        if shutil.which("git") is None:
+            self.skipTest("git is required for tests")
+
+        # Generate normally first time
+        res = generate(self.workspace, self.templates, self.mods)
+        repo_dir = res.repo_dir
+
+        # Locally modify README.md on the landing branch (without committing)
+        (repo_dir / "README.md").write_text("locally modified README!", encoding="utf-8")
+
+        # Re-running generate should abort because of uncommitted changes on README.md
+        from modsmith.generator import GenerateError
+        with self.assertRaises(GenerateError) as ctx:
+            generate(self.workspace, self.templates, self.mods, force=True)
+        self.assertIn("Cannot update landing README.md because it contains uncommitted local changes", str(ctx.exception))
+
+    def test_landing_branch_safe_stale_deletions(self):
+        if shutil.which("git") is None:
+            self.skipTest("git is required for tests")
+
+        # Generate first time
+        res = generate(self.workspace, self.templates, self.mods)
+        repo_dir = res.repo_dir
+
+        # We had LICENSE.md. Let's delete it from workspace LICENSE/ and add LICENSE.txt to simulate changing license types
+        (self.license_dir / "LICENSE.md").unlink()
+        (self.license_dir / "LICENSE.txt").write_text("new license txt", encoding="utf-8")
+
+        # Re-run generation. It should safely delete the stale LICENSE.md and write LICENSE.txt instead.
+        res = generate(self.workspace, self.templates, self.mods, force=True)
+        self.assertFalse((repo_dir / "LICENSE.md").exists())
+        self.assertTrue((repo_dir / "LICENSE.txt").exists())
+
+        # Now, let's create a user-owned stale file (e.g. mock a LICENSE.html file, but commit it with a user commit message)
+        git_checkout(repo_dir, "main")
+        (repo_dir / "LICENSE.html").write_text("user custom license", encoding="utf-8")
+        run_subprocess(["git", "add", "LICENSE.html"], cwd=repo_dir)
+        # Commit as user
+        run_subprocess(["git", "commit", "-m", "My custom license commit"], cwd=repo_dir)
+
+        # Now re-run generate. ModSmith does not have LICENSE.html in workspace, so it's stale. But it is user-owned.
+        # It should NOT delete it!
+        res = generate(self.workspace, self.templates, self.mods, force=True)
+        self.assertTrue((repo_dir / "LICENSE.html").exists())
+
+    def test_landing_branch_failure_restoration(self):
+        if shutil.which("git") is None:
+            self.skipTest("git is required for tests")
+
+        # Create a repo with a fabric branch first
+        cfg_path = self.workspace / "DETAILS" / "modsmith.json"
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+        data["landing_branch"] = {"enabled": False, "name": "main"}
+        cfg_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        res = generate(self.workspace, self.templates, self.mods)
+        repo_dir = res.repo_dir
+
+        # Verify we are on fabric branch
+        self.assertEqual(git_current_branch(repo_dir), "fabric-1.21")
+
+        # Now enable landing branch but force a failure during writing (e.g., make icon unreadable)
+        data["landing_branch"] = {"enabled": True, "name": "main"}
+        data["icon"] = "ASSETS/icon.png"
+        cfg_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        assets_dir = self.workspace / "ASSETS"
+        assets_dir.mkdir()
+        icon_file = assets_dir / "icon.png"
+        icon_file.write_bytes(b"dummy icon bytes")
+
+        # Selective mock of shutil.copy2 to raise OSError only for landing branch files
+        original_copy2 = shutil.copy2
+        def mock_copy2(src, dst):
+            if str(dst).endswith("icon.png") and "src" not in str(dst):
+                raise OSError("Permission denied")
+            return original_copy2(src, dst)
+
+        with patch("shutil.copy2", side_effect=mock_copy2):
+            with self.assertRaises(GenerateError):
+                generate(self.workspace, self.templates, self.mods, force=True)
+
+        # Restoration checks:
+        # 1. We must be back on the original branch (fabric-1.21)
+        self.assertEqual(git_current_branch(repo_dir), "fabric-1.21")
+        # 2. Landing branch "main" was never committed, so the incomplete branch reference is deleted
+        self.assertNotIn("main", git_list_branches(repo_dir))
+
+
 if __name__ == "__main__":
     unittest.main()
+

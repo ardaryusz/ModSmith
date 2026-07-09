@@ -40,6 +40,7 @@ modsmith validate
 ### `generate`
 Generates one or more mod projects in `MODS/<output_repo_name>`.
 * **`--force`**: If the target directory already exists, deletes and overwrites it. Without this flag, `generate` will fail if the folder is already present.
+* **Landing Branch**: If enabled (default), ModSmith will automatically checkout the landing branch (e.g. `main`) at the end of generation. If disabled, it checks out the first target branch.
 ```bash
 modsmith generate
 modsmith generate --force

@@ -186,6 +186,62 @@ def diagnose_environment(
                 result.add_error("modsmith.json: targets list is empty")
             else:
                 result.add_info(f"modsmith.json contains {len(config.targets)} target(s)")
+
+            # Landing branch checks
+            landing = config.landing_branch
+            if landing.enabled:
+                result.add_info(f"Landing branch enabled: {landing.name}")
+                
+                # Workspace README checks
+                readme_file = workspace_dir / "README" / "README.md"
+                if not readme_file.exists():
+                    readme_dir = workspace_dir / "README"
+                    if readme_dir.is_dir():
+                        md_files = list(readme_dir.glob("*.md"))
+                        if md_files:
+                            readme_file = md_files[0]
+                
+                readme_empty = True
+                if readme_file.exists():
+                    try:
+                        content = readme_file.read_text(encoding="utf-8")
+                        if content.strip():
+                            readme_empty = False
+                    except Exception:
+                        pass
+                
+                if readme_empty:
+                    result.add_info("Workspace README is empty; fallback heading will be generated")
+                else:
+                    result.add_info(f"Workspace README is non-empty: {readme_file.resolve()}")
+                
+                # LICENSE check
+                license_dir = workspace_dir / "LICENSE"
+                license_file = None
+                if license_dir.is_dir():
+                    from modsmith.context import discover_license_file
+                    try:
+                        license_file = discover_license_file(license_dir)
+                    except Exception:
+                        pass
+                
+                if license_file is not None:
+                    result.add_info(f"Landing branch license: {license_file.name}")
+                else:
+                    result.add_info("Landing branch license: None")
+
+                # Icon check
+                if config.icon:
+                    icon_path = workspace_dir / config.icon.replace("/", os.sep)
+                    if icon_path.is_file():
+                        result.add_info(f"Landing branch icon: {config.icon}")
+                    else:
+                        result.add_info(f"Landing branch icon: {config.icon} (missing)")
+                else:
+                    result.add_info("Landing branch icon: None")
+            else:
+                result.add_info("Landing branch generation is disabled")
+
         except ConfigError as exc:
             result.add_error(f"Failed to parse modsmith.json: {exc}")
 

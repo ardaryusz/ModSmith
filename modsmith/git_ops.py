@@ -92,7 +92,68 @@ def _ensure_git_user_config(repo_dir: Path) -> None:
         run_subprocess(["git", "config", "user.name"], cwd=repo_dir)
     except Exception:
         try:
-            run_subprocess(["git", "config", "local", "user.name", "ModSmith Generator"], cwd=repo_dir)
-            run_subprocess(["git", "config", "local", "user.email", "generator@modsmith.local"], cwd=repo_dir)
+            run_subprocess(["git", "config", "--local", "user.name", "ModSmith Generator"], cwd=repo_dir)
+            run_subprocess(["git", "config", "--local", "user.email", "generator@modsmith.local"], cwd=repo_dir)
         except Exception:
             pass
+
+
+def git_head_exists(repo_dir: Path) -> bool:
+    """Return True if the repository has at least one commit (HEAD exists)."""
+    from modsmith.utils import run_process
+    res = run_process(["git", "rev-parse", "HEAD"], cwd=repo_dir, capture_output=True)
+    return res.returncode == 0
+
+
+def git_has_staged_changes(repo_dir: Path) -> bool:
+    """Return True if there are staged changes relative to HEAD."""
+    from modsmith.utils import run_process
+    if not git_head_exists(repo_dir):
+        # In a repository with no commits, check if any files are in the index
+        res = run_process(["git", "status", "--porcelain"], cwd=repo_dir, capture_output=True)
+        for line in res.stdout.splitlines():
+            if line.startswith("A ") or line.startswith("M "):
+                return True
+        return False
+
+    res = run_process(["git", "diff", "--cached", "--quiet"], cwd=repo_dir, capture_output=True)
+    if res.returncode == 0:
+        return False
+    if res.returncode == 1:
+        return True
+    raise RuntimeError(f"Git diff --cached --quiet failed with exit code {res.returncode}: {res.stderr}")
+
+
+
+def git_is_file_tracked(repo_dir: Path, filename: str) -> bool:
+    """Return True if the file is tracked in the current Git branch index."""
+    from modsmith.utils import run_process
+    res = run_process(["git", "ls-files", "--error-unmatch", filename], cwd=repo_dir, capture_output=True)
+    return res.returncode == 0
+
+
+def git_is_file_locally_modified(repo_dir: Path, filename: str) -> bool:
+    """Return True if the file has local unstaged or staged modifications or is untracked."""
+    from modsmith.utils import run_process
+    if not (repo_dir / filename).exists():
+        return False
+    res = run_process(["git", "status", "--porcelain", "--", filename], cwd=repo_dir, capture_output=True)
+    return bool(res.stdout.strip())
+
+
+def git_last_commit_message(repo_dir: Path, filename: str) -> str:
+    """Return the message of the last commit that touched the file."""
+    from modsmith.utils import run_process
+    res = run_process(["git", "log", "-1", "--format=%s", "--", filename], cwd=repo_dir, capture_output=True)
+    return res.stdout.strip()
+
+
+def git_rm_file(repo_dir: Path, filename: str) -> None:
+    """Delete a tracked file and stage the deletion."""
+    run_subprocess(["git", "rm", "-f", filename], cwd=repo_dir)
+
+
+def git_rm_all_tracked(repo_dir: Path) -> None:
+    """Remove all tracked files from both the index and working tree (retaining untracked files)."""
+    run_subprocess(["git", "rm", "-rf", "."], cwd=repo_dir)
+

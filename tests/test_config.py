@@ -475,5 +475,100 @@ class TestLoadTemplateDescriptor(unittest.TestCase):
         self.assertFalse(desc.uses_generated_metadata)       # default
 
 
+class TestLandingBranchConfigValidation(unittest.TestCase):
+    """Validation of landing_branch block in modsmith.json."""
+
+    def _load_with_custom_data(self, key_values: dict) -> ModConfig:
+        with open(_VALID_CONFIG, encoding="utf-8") as f:
+            data = json.load(f)
+        for k, v in key_values.items():
+            if v is None:
+                data.pop(k, None)
+            else:
+                data[k] = v
+
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
+        ) as f:
+            json.dump(data, f)
+            tmp = f.name
+        try:
+            return load_mod_config(tmp)
+        finally:
+            os.unlink(tmp)
+
+    def test_default_landing_branch_settings(self):
+        # When landing_branch is missing from json, it should default to enabled: true, name: "main"
+        cfg = self._load_with_custom_data({"landing_branch": None})
+        self.assertTrue(cfg.landing_branch.enabled)
+        self.assertEqual(cfg.landing_branch.name, "main")
+
+    def test_explicit_disabled_landing_branch(self):
+        cfg = self._load_with_custom_data({"landing_branch": {"enabled": False, "name": "main"}})
+        self.assertFalse(cfg.landing_branch.enabled)
+        self.assertEqual(cfg.landing_branch.name, "main")
+
+    def test_custom_valid_branch_name(self):
+        cfg = self._load_with_custom_data({"landing_branch": {"enabled": True, "name": "landing/default-branch"}})
+        self.assertTrue(cfg.landing_branch.enabled)
+        self.assertEqual(cfg.landing_branch.name, "landing/default-branch")
+
+    def test_invalid_branch_names(self):
+        invalid_names = [
+            "",
+            "   ",
+            "branch.",
+            "my..branch",
+            "branch/with/@{",
+            "branch name",
+            "branch~1",
+            "branch^",
+            "branch:1",
+            "branch?",
+            "branch*",
+            "branch[",
+            "branch\\name",
+            "/branch",
+            "branch/",
+            "branch.lock",
+            "my/branch.lock",
+            "my/.branch",
+        ]
+        for name in invalid_names:
+            with self.assertRaises(ConfigError, msg=f"Should reject name '{name}'"):
+                self._load_with_custom_data({"landing_branch": {"enabled": True, "name": name}})
+
+    def test_duplicate_target_branch_name_rejection(self):
+        # Target branch in valid config is "forge-1.20.1" (from _VALID_CONFIG)
+        with self.assertRaises(ConfigError):
+            self._load_with_custom_data({"landing_branch": {"enabled": True, "name": "forge-1.20.1"}})
+
+        # Should also fail case-insensitively
+        with self.assertRaises(ConfigError):
+            self._load_with_custom_data({"landing_branch": {"enabled": True, "name": "Forge-1.20.1"}})
+
+    def test_case_insensitive_target_branch_duplicates_rejected(self):
+        targets = [
+            {
+                "loader": "fabric",
+                "template": "fabric-1.21",
+                "branch": "fabric-1.21",
+                "mc_range": "1.21",
+                "minecraft_version": "1.21",
+            },
+            {
+                "loader": "forge",
+                "template": "forge-1.21",
+                "branch": "Fabric-1.21",  # case duplicate
+                "mc_range": "1.21",
+                "minecraft_version": "1.21",
+            }
+        ]
+        with self.assertRaises(ConfigError):
+            self._load_with_custom_data({"targets": targets})
+
+
 if __name__ == "__main__":
     unittest.main()
+

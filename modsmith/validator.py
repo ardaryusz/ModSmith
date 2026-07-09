@@ -212,6 +212,50 @@ def validate_workspace(
                     )
 
     # ------------------------------------------------------------------
+    # Check readability of files (unreadable files are errors)
+    # ------------------------------------------------------------------
+    # 1. README
+    readme_dir = workspace_dir / "README"
+    if readme_dir.is_dir():
+        readme_file = readme_dir / "README.md"
+        if readme_file.exists():
+            try:
+                readme_file.read_text(encoding="utf-8")
+            except OSError as exc:
+                result.add_error(f"Workspace README file is unreadable: {exc}")
+        else:
+            md_files = list(readme_dir.glob("*.md"))
+            if md_files:
+                try:
+                    md_files[0].read_text(encoding="utf-8")
+                except OSError as exc:
+                    result.add_error(f"Workspace README file {md_files[0].name} is unreadable: {exc}")
+
+    # 2. LICENSE
+    license_dir = workspace_dir / "LICENSE"
+    if license_dir.is_dir():
+        from modsmith.context import get_license_candidates
+        try:
+            candidates = get_license_candidates(license_dir)
+            for c in candidates:
+                try:
+                    c.read_bytes()
+                except OSError as exc:
+                    result.add_error(f"Workspace LICENSE file {c.name} is unreadable: {exc}")
+        except Exception as exc:
+            result.add_error(f"Workspace LICENSE folder is unreadable: {exc}")
+
+    # 3. Configured Icon
+    if config is not None and config.icon:
+        import os
+        icon_src = workspace_dir / config.icon.replace("/", os.sep)
+        if icon_src.exists():
+            try:
+                icon_src.read_bytes()
+            except OSError as exc:
+                result.add_error(f"Configured mod icon '{config.icon}' is unreadable: {exc}")
+
+    # ------------------------------------------------------------------
     # Checks 16 & 17 — tool availability on PATH
     # ------------------------------------------------------------------
     _check_tool_availability(result)

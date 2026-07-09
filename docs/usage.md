@@ -135,10 +135,31 @@ python -m modsmith build
 
 ## Generated Git Branches
 
-During the `generate` phase, ModSmith initializes a local Git repository inside `MODS/EasyPeasyGunpowder`. 
+During the `generate` phase, ModSmith initializes a local Git repository inside `MODS/EasyPeasyGunpowder`.
 
-* **Orphan Branches:** ModSmith creates each configured target on an independent **orphan branch** (e.g., `forge-1.20.1`). There is no common `main` or `master` branch sharing code between targets, preventing version skew.
-* **Checked-out State:** Once generation finishes, ModSmith keeps the first configured target checked out in the working directory so you can explore it or run Gradle tasks directly.
+* **Orphan Target Branches:** ModSmith creates each configured compiler target on an independent **orphan branch** (e.g., `forge-1.20.1`). There is no common code history sharing between targets, preventing version skew.
+* **Repository Landing Branch:** ModSmith generates a repository landing branch intended for GitHub/default-branch presentation. This branch is checked out at the end of the generation run.
+  * **Contents**: Contains only the core presentation files: `README.md`, selected `LICENSE` (if present), `icon.png` (if present), and `.gitignore` (standard repository exclusions). It does not contain code, build scripts, metadata files, or templates.
+  * **Configuration**: Configured in `modsmith.json` via the optional `landing_branch` block:
+    ```json
+    "landing_branch": {
+      "enabled": true,
+      "name": "main"
+    }
+    ```
+  * **Disabling**: You can disable landing branch generation by setting `"enabled": false`. In this case, the first configured target branch is checked out at the end of generation.
+  * **README Fallback**: If no workspace README is found or is empty, ModSmith automatically generates a fallback `README.md` containing only `# <Mod Name>` with a trailing newline.
+  * **LICENSE & Icon Mapping**: Copies the discovered `LICENSE` variant (e.g. `LICENSE.md`) and configured `icon` (as `icon.png`) to the root of the landing branch.
+  * **Deterministic `.gitignore`**: Writes a clean `.gitignore` to the root of the landing branch.
+  * **Preservation of Unrelated Files**: Unrelated tracked files on the landing branch (e.g., `CHANGELOG.md`, custom documentation directories) are preserved across regeneration. Any unrelated untracked files are also backed up and restored to remain untracked on the landing branch.
+
+### Git-Safety Checks
+
+To prevent corrupting your repository or mixing changes, ModSmith runs the following checks before checking out or modifying the landing branch:
+1. **Preflight Index Check**: Aborts if there are any staged changes anywhere in the repository.
+2. **Preflight Untracked Collision Check**: Aborts if a managed landing path (e.g. `icon.png` or `README.md`) already exists in the repository but is untracked.
+3. **Managed-File Conflict Check**: Aborts if any managed landing path contains uncommitted local changes.
+4. **Failure Restoration**: If generation fails during landing branch updates, ModSmith restores the originally checked-out target branch, cleans up incomplete branch references, and leaves all files untouched.
 
 ---
 

@@ -10,6 +10,7 @@
 - **Automatic recipe format conversion:** Seamlessly translate recipes between legacy (1.20) and modern (1.21) formats.
 - **Optional license file support:** Automatically discover and copy workspace `LICENSE`, `LICENSE.md`, `LICENSE.txt`, `LICENSE.html`, or `LICENSE.docx` to all generated mod branch roots.
 - **Isolated Git branches:** Creates clean local Git orphan branches per target to prevent version skew.
+- **Repository Landing Branch:** Automatically creates a clean default branch (e.g. `main`) containing only presentation files (README, license, icon) and standard git exclusions.
 - **Project verification:** Automatic generated-project verification, Java package matching, and entrypoint pruning.
 - **Gradle build automation:** Build all loader targets in sequence using automated Gradle compilation.
 - **Windows installer support:** Package and deploy the tool using an optimized Windows installation setup wizard.
@@ -44,6 +45,10 @@ Create the file `WORKSPACE/DETAILS/modsmith.json` defining your mod details and 
   "authors": "ardaryusz",
   "license": "MIT",
   "output_repo_name": "EasyPeasyGunpowder",
+  "landing_branch": {
+    "enabled": true,
+    "name": "main"
+  },
   "targets": [
     {
       "loader": "forge",
