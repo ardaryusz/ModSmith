@@ -115,6 +115,95 @@ def to_class_name(mod_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+_hide_windows_globally = False
+
+
+def set_hide_windows(hide: bool) -> None:
+    """Enable or disable console window hiding for subprocesses globally."""
+    global _hide_windows_globally
+    _hide_windows_globally = hide
+
+
+def run_process(
+    args: list[str],
+    cwd: Path | str | None = None,
+    env: dict[str, str] | None = None,
+    capture_output: bool = True,
+    hide_window: bool = False,
+    on_log_line: callable | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run *args* as a subprocess.
+
+    On Windows, if *hide_window* is True (or globally enabled), hides any
+    created CMD/console window without using shell=True.
+
+    If *on_log_line* is provided, merges stderr into stdout, streams output
+    line-by-line, and does not block/deadlock.
+    """
+    import os
+    import sys
+
+    actual_hide = hide_window or _hide_windows_globally or (os.environ.get("MODSMITH_HIDE_WINDOW") == "1")
+
+    creationflags = 0
+    startupinfo = None
+    if actual_hide and sys.platform == "win32":
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        if not hasattr(subprocess, "CREATE_NO_WINDOW"):
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 1)
+            startupinfo.wShowWindow = 0  # SW_HIDE
+
+    kwargs: dict[str, any] = {}
+    if creationflags:
+        kwargs["creationflags"] = creationflags
+    if startupinfo:
+        kwargs["startupinfo"] = startupinfo
+
+    if on_log_line is not None:
+        process = subprocess.Popen(
+            args,
+            cwd=str(cwd) if cwd else None,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            **kwargs,
+        )
+
+        stdout_lines = []
+        if process.stdout:
+            for line in process.stdout:
+                clean_line = line.rstrip("\r\n")
+                on_log_line(clean_line)
+                stdout_lines.append(line)
+
+        process.wait()
+        stdout_content = "".join(stdout_lines)
+
+        return subprocess.CompletedProcess(
+            args=args,
+            returncode=process.returncode,
+            stdout=stdout_content,
+            stderr="",
+        )
+
+    # Standard execution
+    stdout_redir = subprocess.PIPE if capture_output else None
+    stderr_redir = subprocess.PIPE if capture_output else None
+
+    res = subprocess.run(
+        args,
+        cwd=str(cwd) if cwd else None,
+        env=env,
+        stdout=stdout_redir,
+        stderr=stderr_redir,
+        text=True,
+        **kwargs,
+    )
+    return res
+
+
 def run_subprocess(
     args: list[str],
     cwd: Path | str | None = None,
@@ -124,13 +213,15 @@ def run_subprocess(
     Raises :class:`subprocess.CalledProcessError` on non-zero exit.
     Raises :class:`FileNotFoundError` if the executable is not on ``PATH``.
     """
-    return subprocess.run(
-        args,
-        cwd=str(cwd) if cwd else None,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    res = run_process(args, cwd=cwd, capture_output=True)
+    if res.returncode != 0:
+        raise subprocess.CalledProcessError(
+            res.returncode,
+            args,
+            output=res.stdout,
+            stderr=res.stderr,
+        )
+    return res
 
 
 # ---------------------------------------------------------------------------

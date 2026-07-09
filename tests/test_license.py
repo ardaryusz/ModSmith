@@ -311,7 +311,7 @@ class TestLicenseDoctor(unittest.TestCase):
                 # Scenario A: missing
                 res = diagnose_environment(ws, tpl, mods)
                 self.assertTrue(res.ok, f"Doctor check failed: {res.errors}")
-                self.assertTrue(any("No workspace LICENSE.md or LICENSE.txt found" in inf for inf in res.infos))
+                self.assertTrue(any("No workspace LICENSE, LICENSE.md, LICENSE.txt, LICENSE.html, or LICENSE.docx found" in inf for inf in res.infos))
 
                 # Scenario B: LICENSE.md found
                 (ws / "LICENSE" / "LICENSE.md").touch()

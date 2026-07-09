@@ -20,6 +20,7 @@ from pathlib import Path
 
 from modsmith.config import load_mod_config
 from modsmith.git_ops import git_checkout, git_list_branches
+from modsmith.utils import run_process
 
 
 # ---------------------------------------------------------------------------
@@ -104,31 +105,88 @@ def find_gradle_wrapper(repo_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def run_gradle_build(repo_dir: Path, wrapper: Path) -> None:
+def run_gradle_build(
+    repo_dir: Path,
+    wrapper: Path,
+    on_log_line: callable | None = None,
+) -> None:
     """Run ``wrapper clean build`` inside *repo_dir*.
 
-    Uses ``subprocess.run`` without ``shell=True``.  Raises :class:`BuildError`
+    Uses ``run_process`` helper. Raises :class:`BuildError`
     on non-zero exit or if the wrapper executable is not found.
     """
     cmd = [str(wrapper), "clean", "build"]
     try:
-        result = subprocess.run(
+        result = run_process(
             cmd,
             cwd=str(repo_dir),
-            check=False,   # we handle exit code ourselves for a clean message
-            capture_output=True,
-            text=True,
+            on_log_line=on_log_line,
         )
     except FileNotFoundError as exc:
         raise BuildError(f"Gradle wrapper not executable: {exc}") from exc
 
     if result.returncode != 0:
-        # Surface the last ~20 lines of stderr so the user knows what broke.
-        tail = "\n".join(result.stderr.splitlines()[-20:]) if result.stderr else ""
-        raise BuildError(
-            f"Gradle build failed (exit {result.returncode}) "
-            f"in branch being built.\n{tail}".strip()
-        )
+        if on_log_line is not None:
+            raise BuildError(
+                f"Gradle build failed (exit {result.returncode}) in branch being built."
+            )
+        else:
+            tail = "\n".join(result.stderr.splitlines()[-20:]) if result.stderr else ""
+            raise BuildError(
+                f"Gradle build failed (exit {result.returncode}) "
+                f"in branch being built.\n{tail}".strip()
+            )
+
+
+# ---------------------------------------------------------------------------
+# Helper: clean stale target JARs
+# ---------------------------------------------------------------------------
+
+
+def _clean_stale_jars_for_branch(
+    dist_dir: Path,
+    mod_id: str,
+    mod_version: str,
+    branch_name: str,
+    loader: str,
+    mc_version: str,
+    new_jar_names: set[str],
+) -> None:
+    """Removes stale ModSmith-produced JARs in dist_dir for the branch currently being built.
+
+    Any JAR matching the mod_id, mod_version, and containing the loader name and mc version base
+    that is NOT in new_jar_names is considered stale and deleted.
+    """
+    if not dist_dir.is_dir():
+        return
+
+    loader_lower = loader.lower()
+    mc_parts = mc_version.split(".")
+    mc_base = f"{mc_parts[0]}.{mc_parts[1]}" if len(mc_parts) >= 2 else mc_version
+
+    # Check for any loader keywords in branch name
+    branch_lower = branch_name.lower()
+    branch_loaders = [kw for kw in ("forge", "fabric", "neoforge") if kw in branch_lower]
+
+    for entry in dist_dir.glob("*.jar"):
+        if not entry.is_file():
+            continue
+        if entry.name in new_jar_names:
+            continue
+
+        name = entry.name
+        if name.startswith(f"{mod_id}-") and name.endswith(f"-{mod_version}.jar"):
+            middle = name[len(mod_id) + 1 : -len(mod_version) - 5].lower()
+            
+            # Check if this jar belongs to the current target branch being built
+            loader_match = (loader_lower in middle) or any(kw in middle for kw in branch_loaders)
+            mc_match = mc_base in middle
+            
+            if loader_match and mc_match:
+                try:
+                    entry.unlink()
+                except Exception:
+                    pass
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +194,15 @@ def run_gradle_build(repo_dir: Path, wrapper: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def collect_built_jars(repo_dir: Path, dist_dir: Path) -> list[Path]:
+def collect_built_jars(
+    repo_dir: Path,
+    dist_dir: Path,
+    mod_id: str | None = None,
+    mod_version: str | None = None,
+    branch_name: str | None = None,
+    loader: str | None = None,
+    mc_version: str | None = None,
+) -> list[Path]:
     """Copy release JARs from ``build/libs/`` into *dist_dir*.
 
     Excluded patterns (not copied):
@@ -166,6 +232,20 @@ def collect_built_jars(repo_dir: Path, dist_dir: Path) -> list[Path]:
 
     dist_dir.mkdir(parents=True, exist_ok=True)
     copied: list[Path] = []
+    new_jar_names = {jar.name for jar in candidates}
+
+    # Clean up stale JARs for this branch if we have target metadata
+    if mod_id and mod_version and branch_name and loader and mc_version:
+        _clean_stale_jars_for_branch(
+            dist_dir,
+            mod_id,
+            mod_version,
+            branch_name,
+            loader,
+            mc_version,
+            new_jar_names,
+        )
+
     for jar in sorted(candidates):
         dest = dist_dir / jar.name
         shutil.copy2(jar, dest)
@@ -184,6 +264,7 @@ def build(
     *,
     branch: str | None = None,
     dry_run: bool = False,
+    on_log_line: callable | None = None,
 ) -> BuildResult:
     """Build generated target branches with Gradle and collect release JARs.
 
@@ -200,14 +281,14 @@ def build(
        a. ``git checkout``
        b. find Gradle wrapper
        c. ``gradlew clean build``
-       d. copy release JARs to ``WORKSPACE/DIST/``
+       d. copy release JARs to ``WORKSPACE/DIST/<modid>-<mod_version>/``
     7. Leave the repo checked out on the **first** branch that was built.
 
     Raises
     ------
     :class:`BuildError`
-        For any user-fixable problem (missing repo, missing branch, Gradle
-        failure, missing JARs).
+         For any user-fixable problem (missing repo, missing branch, Gradle
+         failure, missing JARs).
     """
     workspace_dir = Path(workspace_dir).resolve()
     mods_dir = Path(mods_dir).resolve()
@@ -271,6 +352,8 @@ def build(
     built: list[str] = []
     all_jars: list[Path] = []
 
+    versioned_dist_dir = dist_dir / f"{config.mod_id}-{config.mod_version}"
+
     for i, br in enumerate(requested):
         # Checkout
         try:
@@ -282,10 +365,25 @@ def build(
         wrapper = find_gradle_wrapper(repo_dir)
 
         # Run Gradle
-        run_gradle_build(repo_dir, wrapper)
+        run_gradle_build(repo_dir, wrapper, on_log_line=on_log_line)
+
+        # Find target configuration details
+        target_cfg = None
+        for t in config.targets:
+            if t.branch == br:
+                target_cfg = t
+                break
 
         # Collect JARs
-        jars = collect_built_jars(repo_dir, dist_dir)
+        jars = collect_built_jars(
+            repo_dir,
+            versioned_dist_dir,
+            mod_id=config.mod_id,
+            mod_version=config.mod_version,
+            branch_name=br,
+            loader=target_cfg.loader if target_cfg else None,
+            mc_version=target_cfg.minecraft_version if target_cfg else None,
+        )
         all_jars.extend(jars)
         built.append(br)
 
@@ -299,7 +397,7 @@ def build(
             )
 
     return BuildResult(
-        repo_dir=repo_dir,
+        repo_dir=versioned_dist_dir,  # Return versioned path as repo_dir for display
         built_branches=built,
         copied_jars=all_jars,
         warnings=warnings,

@@ -41,6 +41,24 @@ class DoctorResult:
         return len(self.errors) == 0
 
 
+def _run_process(args: list[str]) -> subprocess.CompletedProcess[str]:
+    from modsmith.utils import run_process
+    res = run_process(args, capture_output=True)
+    
+    ret = res.returncode
+    is_err = False
+    if isinstance(ret, int):
+        is_err = (ret != 0)
+    elif hasattr(ret, "assert_called") or hasattr(ret, "_mock_name"):
+        is_err = False
+    else:
+        is_err = bool(ret)
+
+    if is_err:
+        raise subprocess.CalledProcessError(ret, args, output=res.stdout, stderr=res.stderr)
+    return res
+
+
 def diagnose_environment(
     workspace_dir: Path,
     templates_dir: Path,
@@ -96,12 +114,15 @@ def diagnose_environment(
     else:
         result.add_warning(f"WORKSPACE/README directory does not exist: {readme_dir}")
 
-    # WORKSPACE/DIST (Missing/Empty is a warning, not an error)
+    # WORKSPACE/DIST (Missing/Empty is INFO, not warning)
     dist_dir = workspace_dir / "DIST"
-    if dist_dir.is_dir():
-        result.add_info(f"WORKSPACE/DIST directory exists: {dist_dir}")
+    if dist_dir.exists():
+        if not dist_dir.is_dir():
+            result.add_error(f"WORKSPACE/DIST path exists but is not a directory: {dist_dir}")
+        else:
+            result.add_info(f"WORKSPACE/DIST directory exists: {dist_dir}")
     else:
-        result.add_warning(f"WORKSPACE/DIST directory does not exist: {dist_dir}")
+        result.add_info(f"WORKSPACE/DIST directory does not exist yet: {dist_dir}")
 
     # WORKSPACE/ASSETS (Missing is INFO only, never an error)
     assets_dir = workspace_dir / "ASSETS"
@@ -115,28 +136,23 @@ def diagnose_environment(
     if license_dir.is_dir():
         result.add_info(f"WORKSPACE/LICENSE directory exists: {license_dir}")
         try:
-            from modsmith.context import discover_license_file
-            md_matches = []
-            txt_matches = []
-            for entry in license_dir.iterdir():
-                if entry.is_file():
-                    stem_lower = entry.stem.lower()
-                    ext_lower = entry.suffix.lower()
-                    if stem_lower == "license":
-                        if ext_lower == ".md":
-                            md_matches.append(entry)
-                        elif ext_lower == ".txt":
-                            txt_matches.append(entry)
-
-            md_matches.sort(key=lambda p: p.name)
-            txt_matches.sort(key=lambda p: p.name)
-            total_matches = len(md_matches) + len(txt_matches)
+            from modsmith.context import get_license_candidates, discover_license_file
+            candidates = get_license_candidates(license_dir)
             selected = discover_license_file(license_dir)
 
-            if total_matches == 0:
-                result.add_info("No workspace LICENSE.md or LICENSE.txt found; generated mods will not include a license file.")
-            elif total_matches > 1:
-                result.add_info(f"Multiple workspace license files exist (found {total_matches} files). Markdown file {selected.name} was selected.")
+            if not candidates:
+                result.add_info("No workspace LICENSE, LICENSE.md, LICENSE.txt, LICENSE.html, or LICENSE.docx found; generated mods will not include a license file.")
+            elif len(candidates) > 1:
+                type_labels = {
+                    "": "Extensionless file",
+                    ".md": "Markdown file",
+                    ".txt": "Text file",
+                    ".html": "HTML file",
+                    ".docx": "Word document"
+                }
+                type_str = type_labels.get(selected.suffix.lower(), "License file")
+                names = [c.name for c in candidates]
+                result.add_info(f"Multiple workspace license files exist (found {len(candidates)} files: {', '.join(names)}). {type_str} {selected.name} was selected.")
             else:
                 result.add_info(f"Workspace license file found: {selected.resolve()}")
         except Exception as exc:
@@ -233,7 +249,7 @@ def diagnose_environment(
     if git_path:
         result.add_info(f"Git executable found: {git_path}")
         try:
-            git_ver = subprocess.run(["git", "--version"], capture_output=True, text=True, check=True)
+            git_ver = _run_process(["git", "--version"])
             result.add_info(f"Git version: {git_ver.stdout.strip()}")
         except (subprocess.SubprocessError, OSError) as exc:
             result.add_warning(f"Failed to query Git version: {exc}")
@@ -245,7 +261,7 @@ def diagnose_environment(
     if java_path:
         result.add_info(f"Java executable found: {java_path}")
         try:
-            java_ver = subprocess.run(["java", "-version"], capture_output=True, text=True, check=True)
+            java_ver = _run_process(["java", "-version"])
             output = java_ver.stderr.strip() or java_ver.stdout.strip()
             first_line = output.splitlines()[0] if output else "unknown"
             result.add_info(f"Java version: {first_line}")
@@ -263,13 +279,25 @@ def diagnose_environment(
         else:
             result.add_info(f"Generated repository does not exist (not yet generated): {repo_dir}")
 
-    # DIST Jars (missing/empty is a warning, not an error)
+    # DIST Jars
     if dist_dir.is_dir():
-        jars = list(dist_dir.glob("*.jar"))
-        if not jars:
-            result.add_warning(f"WORKSPACE/DIST directory contains no JAR files: {dist_dir}")
-        else:
-            result.add_info(f"WORKSPACE/DIST contains {len(jars)} JAR file(s)")
+        try:
+            all_jars = []
+            for entry in dist_dir.rglob("*.jar"):
+                if entry.is_file():
+                    all_jars.append(entry)
+
+            if not all_jars:
+                result.add_info(f"WORKSPACE/DIST contains no built JAR files yet: {dist_dir}")
+            else:
+                root_jars = [j for j in all_jars if j.parent == dist_dir]
+                result.add_info(f"WORKSPACE/DIST contains {len(all_jars)} JAR file(s)")
+                if root_jars:
+                    result.add_info(f"Legacy root-level JAR files found: {len(root_jars)}")
+        except Exception as exc:
+            result.add_error(f"WORKSPACE/DIST directory cannot be read: {exc}")
+    else:
+        result.add_info(f"WORKSPACE/DIST contains no built JAR files yet: {dist_dir}")
 
     # 9. Dev Tools
     if dev_mode:
@@ -279,7 +307,7 @@ def diagnose_environment(
             path = shutil.which(cmd)
             if path:
                 try:
-                    ver = subprocess.run([cmd, "--version"], capture_output=True, text=True, check=True)
+                    ver = _run_process([cmd, "--version"])
                     ver_str = ver.stdout.strip() or ver.stderr.strip()
                     result.add_info(f"{cmd} executable found: {path} ({ver_str})")
                     python_found = True
@@ -293,7 +321,7 @@ def diagnose_environment(
         pytest_path = shutil.which("pytest")
         if pytest_path:
             try:
-                ver = subprocess.run(["pytest", "--version"], capture_output=True, text=True, check=True)
+                ver = _run_process(["pytest", "--version"])
                 ver_str = ver.stdout.strip() or ver.stderr.strip()
                 first_line = ver_str.splitlines()[0] if ver_str else "unknown"
                 result.add_info(f"pytest found: {pytest_path} ({first_line})")
@@ -301,7 +329,7 @@ def diagnose_environment(
                 result.add_info(f"pytest found: {pytest_path}")
         else:
             try:
-                ver = subprocess.run(["py", "-m", "pytest", "--version"], capture_output=True, text=True, check=True)
+                ver = _run_process(["py", "-m", "pytest", "--version"])
                 ver_str = ver.stdout.strip() or ver.stderr.strip()
                 first_line = ver_str.splitlines()[0] if ver_str else "unknown"
                 result.add_info(f"pytest found via py -m pytest ({first_line})")
@@ -312,7 +340,7 @@ def diagnose_environment(
         pyinstaller_path = shutil.which("pyinstaller")
         if pyinstaller_path:
             try:
-                ver = subprocess.run(["pyinstaller", "--version"], capture_output=True, text=True, check=True)
+                ver = _run_process(["pyinstaller", "--version"])
                 ver_str = ver.stdout.strip() or ver.stderr.strip()
                 result.add_info(f"pyinstaller found: {pyinstaller_path} ({ver_str})")
             except (subprocess.SubprocessError, OSError):
@@ -324,7 +352,7 @@ def diagnose_environment(
         makensis_path = shutil.which("makensis")
         if makensis_path:
             try:
-                ver = subprocess.run(["makensis", "/VERSION"], capture_output=True, text=True, check=True)
+                ver = _run_process(["makensis", "/VERSION"])
                 ver_str = ver.stdout.strip() or ver.stderr.strip()
                 result.add_info(f"makensis found: {makensis_path} (v{ver_str})")
             except (subprocess.SubprocessError, OSError):

@@ -19,6 +19,8 @@ from modsmith.utils import (
     is_valid_java_package,
     safe_delete_tree,
     to_class_name,
+    run_process,
+    set_hide_windows,
 )
 
 
@@ -278,6 +280,119 @@ class TestSafeDeleteTree(unittest.TestCase):
         # Message should guide the user
         self.assertIn("Could not fully delete", msg)
         self.assertIn("Gradle daemons", msg)
+
+class TestRunProcess(unittest.TestCase):
+    """Tests for run_process helper and hidden window flags."""
+
+    def test_run_process_captures_stdout_stderr(self):
+        import sys
+        # Run a simple Python command that prints to stdout and stderr
+        cmd = [sys.executable, "-c", "import sys; sys.stdout.write('hello'); sys.stderr.write('world')"]
+        res = run_process(cmd, capture_output=True)
+        self.assertEqual(res.returncode, 0)
+        self.assertEqual(res.stdout, "hello")
+        self.assertEqual(res.stderr, "world")
+
+    def test_run_process_exit_code_preserved(self):
+        import sys
+        cmd = [sys.executable, "-c", "import sys; sys.exit(42)"]
+        res = run_process(cmd, capture_output=True)
+        self.assertEqual(res.returncode, 42)
+
+    def test_run_process_missing_executable_raises_error(self):
+        with self.assertRaises(FileNotFoundError):
+            run_process(["nonexistent_executable_12345"])
+
+    def test_run_process_does_not_use_shell(self):
+        # Verify subprocess.run or Popen is called without shell=True
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = unittest.mock.MagicMock()
+            run_process(["dummy"])
+            _, kwargs = mock_run.call_args
+            self.assertFalse(kwargs.get("shell", False))
+
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = unittest.mock.MagicMock()
+            run_process(["dummy"], on_log_line=lambda l: None)
+            _, kwargs = mock_popen.call_args
+            self.assertFalse(kwargs.get("shell", False))
+
+    def test_run_process_merges_and_streams_without_deadlock(self):
+        import sys
+        # Generate heavy stderr and stdout output to test deadlock prevention
+        script = "import sys; sys.stdout.write('o' * 100000); sys.stderr.write('e' * 100000)"
+        cmd = [sys.executable, "-c", script]
+        
+        lines = []
+        def log_cb(line):
+            lines.append(line)
+
+        res = run_process(cmd, on_log_line=log_cb)
+        self.assertEqual(res.returncode, 0)
+        total_len = sum(len(l) for l in lines)
+        self.assertGreater(total_len, 190000)
+        self.assertEqual(res.stderr, "")
+
+    def test_windows_hidden_process_flags_applied(self):
+        import sys
+        from modsmith.utils import run_process, set_hide_windows
+        
+        # Test A: hide_window=True
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = unittest.mock.MagicMock()
+            run_process(["dummy"], hide_window=True)
+            _, kwargs = mock_run.call_args
+            if sys.platform == "win32":
+                self.assertIn("creationflags", kwargs)
+                self.assertEqual(kwargs["creationflags"], 0x08000000)
+            else:
+                self.assertNotIn("creationflags", kwargs)
+
+        # Test B: hide_window=False (default visible)
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = unittest.mock.MagicMock()
+            run_process(["dummy"], hide_window=False)
+            _, kwargs = mock_run.call_args
+            self.assertNotIn("creationflags", kwargs)
+            self.assertNotIn("startupinfo", kwargs)
+
+        # Test C: set_hide_windows(True) globally
+        try:
+            set_hide_windows(True)
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = unittest.mock.MagicMock()
+                run_process(["dummy"], hide_window=False)
+                _, kwargs = mock_run.call_args
+                if sys.platform == "win32":
+                    self.assertIn("creationflags", kwargs)
+                    self.assertEqual(kwargs["creationflags"], 0x08000000)
+                else:
+                    self.assertNotIn("creationflags", kwargs)
+        finally:
+            set_hide_windows(False)
+
+    def test_gui_import_does_not_toggle_hidden_mode(self):
+        from modsmith.utils import _hide_windows_globally
+        self.assertFalse(_hide_windows_globally)
+        
+        import modsmith_gui.app
+        import modsmith_gui.workers
+        from modsmith.utils import _hide_windows_globally as val
+        self.assertFalse(val)
+
+    def test_run_app_startup_enables_hidden_mode(self):
+        from modsmith.utils import _hide_windows_globally, set_hide_windows
+        self.assertFalse(_hide_windows_globally)
+        
+        with patch("modsmith_gui.app.QApplication"), \
+             patch("modsmith_gui.main_window.MainWindow"):
+            try:
+                from modsmith_gui.app import run_app
+                run_app()
+                from modsmith.utils import _hide_windows_globally as val
+                self.assertTrue(val)
+            finally:
+                set_hide_windows(False)
 
 
 if __name__ == "__main__":

@@ -398,7 +398,8 @@ def cmd_build(args: argparse.Namespace) -> int:
         for b in res.built_branches:
             print(f"  - {b}")
         if res.copied_jars:
-            print("\nJARs copied to WORKSPACE/DIST/:")
+            print(f"\nBuild output:\n{res.repo_dir}")
+            print("\nJARs copied:")
             for j in res.copied_jars:
                 print(f"  - {j.name}")
 

@@ -8,7 +8,7 @@
 
 - **Multi-loader target generation:** Generate mods for Fabric, Forge, and NeoForge concurrently.
 - **Automatic recipe format conversion:** Seamlessly translate recipes between legacy (1.20) and modern (1.21) formats.
-- **Optional license file support:** Automatically discover and copy workspace `LICENSE.md` or `LICENSE.txt` to all generated mod branch roots.
+- **Optional license file support:** Automatically discover and copy workspace `LICENSE`, `LICENSE.md`, `LICENSE.txt`, `LICENSE.html`, or `LICENSE.docx` to all generated mod branch roots.
 - **Isolated Git branches:** Creates clean local Git orphan branches per target to prevent version skew.
 - **Project verification:** Automatic generated-project verification, Java package matching, and entrypoint pruning.
 - **Gradle build automation:** Build all loader targets in sequence using automated Gradle compilation.
@@ -61,7 +61,7 @@ Create the file `WORKSPACE/DETAILS/modsmith.json` defining your mod details and 
 
 - Place your custom recipe JSON files under `WORKSPACE/RECIPES/` (either legacy 1.20 or modern 1.21 format).
 - Download and place unpacked Minecraft mod MDKs inside `MODTEMPLATES/` (e.g. `MODTEMPLATES/forge-1.20.1`).
-- (Optional) Place your `LICENSE.md` or `LICENSE.txt` file in `WORKSPACE/LICENSE/` to have it copied to generated branch roots.
+- (Optional) Place your license file (e.g. `LICENSE`, `LICENSE.md`, `LICENSE.txt`, `LICENSE.html`, or `LICENSE.docx`) in `WORKSPACE/LICENSE/` to have it copied to generated branch roots.
 
 ### 4. Execute Workflow
 
@@ -91,7 +91,7 @@ Run the sequence of commands in your terminal:
   python -m modsmith build
   ```
 
-Once complete, your compiled mod `.jar` files will be placed inside `WORKSPACE/DIST/`.
+Once complete, your compiled mod `.jar` files will be placed inside versioned subfolders in `WORKSPACE/DIST/` (e.g., `WORKSPACE/DIST/<modid>-<mod_version>/`).
 
 ---
 

@@ -18,43 +18,59 @@ from modsmith.config import ModConfig, TargetConfig, TemplateDescriptor
 # ---------------------------------------------------------------------------
 
 
-def discover_license_file(license_dir: Path) -> Path | None:
-    """Finds the license file in license_dir.
-    Searches case-insensitively for files whose stem is 'LICENSE'
-    and extension is either '.md' or '.txt'.
-    If multiple matches exist, prefers '.md' over '.txt'.
-    Returns the Path to the selected file, or None if not found or directory missing.
+def get_license_candidates(license_dir: Path) -> list[Path]:
+    """Finds all matching license files in license_dir.
+
+    Searches case-insensitively for files whose stem is exactly 'LICENSE'
+    and extension is either empty (no extension), '.md', '.txt', '.html', or '.docx'.
+
+    Returns them sorted according to the precedence rules:
+    1. LICENSE (no extension)
+    2. LICENSE.md
+    3. LICENSE.txt
+    4. LICENSE.html
+    5. LICENSE.docx
+
+    Within the same extension/type, uses deterministic case-insensitive filename sorting
+    (with exact case-sensitive filename as a tie-breaker).
     """
     if not license_dir.is_dir():
-        return None
+        return []
 
-    md_matches = []
-    txt_matches = []
-
+    candidates = []
     try:
         for entry in license_dir.iterdir():
             if not entry.is_file():
                 continue
             stem_lower = entry.stem.lower()
             ext_lower = entry.suffix.lower()
-            if stem_lower == "license":
-                if ext_lower == ".md":
-                    md_matches.append(entry)
-                elif ext_lower == ".txt":
-                    txt_matches.append(entry)
+            if stem_lower == "license" and ext_lower in ("", ".md", ".txt", ".html", ".docx"):
+                candidates.append(entry)
     except OSError:
-        return None
+        return []
 
-    # Sort deterministically
-    md_matches.sort(key=lambda p: p.name)
-    txt_matches.sort(key=lambda p: p.name)
+    rank_map = {
+        "": 0,
+        ".md": 1,
+        ".txt": 2,
+        ".html": 3,
+        ".docx": 4,
+    }
 
-    if md_matches:
-        return md_matches[0]
-    if txt_matches:
-        return txt_matches[0]
+    # Sort deterministically:
+    # 1. Rank based on suffix precedence
+    # 2. Case-insensitive filename sorting
+    # 3. Original filename (as tie-breaker)
+    candidates.sort(key=lambda p: (rank_map[p.suffix.lower()], p.name.lower(), p.name))
+    return candidates
 
-    return None
+
+def discover_license_file(license_dir: Path) -> Path | None:
+    """Finds the license file in license_dir using precedence rules.
+    Returns the Path to the selected file, or None if not found or directory missing.
+    """
+    candidates = get_license_candidates(license_dir)
+    return candidates[0] if candidates else None
 
 
 @dataclass

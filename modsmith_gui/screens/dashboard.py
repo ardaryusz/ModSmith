@@ -326,28 +326,14 @@ class DashboardScreen(QWidget):
             self._lbl_summary_license.setStyleSheet("color: #b87800; font-weight: bold;")
         else:
             try:
-                from modsmith.context import discover_license_file
-                md_matches = []
-                txt_matches = []
-                for entry in license_dir.iterdir():
-                    if entry.is_file():
-                        stem_lower = entry.stem.lower()
-                        ext_lower = entry.suffix.lower()
-                        if stem_lower == "license":
-                            if ext_lower == ".md":
-                                md_matches.append(entry)
-                            elif ext_lower == ".txt":
-                                txt_matches.append(entry)
-
-                md_matches.sort(key=lambda p: p.name)
-                txt_matches.sort(key=lambda p: p.name)
-                total_matches = len(md_matches) + len(txt_matches)
+                from modsmith.context import get_license_candidates, discover_license_file
+                candidates = get_license_candidates(license_dir)
                 selected = discover_license_file(license_dir)
 
-                if total_matches == 0:
+                if not candidates:
                     self._lbl_summary_license.setText("No license file found")
                     self._lbl_summary_license.setStyleSheet("color: #b87800; font-weight: bold;")
-                elif total_matches > 1:
+                elif len(candidates) > 1:
                     self._lbl_summary_license.setText(f"Multiple found; using {selected.name}")
                     self._lbl_summary_license.setStyleSheet("color: #b87800; font-weight: bold;")
                 else:
@@ -362,11 +348,26 @@ class DashboardScreen(QWidget):
         if not dist_dir.is_dir():
             self._lbl_dist.setText("DIST folder not found")
             return
-        jars = sorted(dist_dir.glob("*.jar"), key=lambda p: p.stat().st_mtime, reverse=True)
+        # Find all JARs recursively inside DIST
+        jars = []
+        try:
+            for entry in dist_dir.rglob("*.jar"):
+                if entry.is_file():
+                    jars.append(entry)
+        except Exception:
+            pass
+
+        jars = sorted(jars, key=lambda p: p.stat().st_mtime, reverse=True)
         if not jars:
             self._lbl_dist.setText("No JARs found in DIST")
             return
-        lines = [f"• {j.name}" for j in jars[:10]]
+        lines = []
+        for j in jars[:10]:
+            try:
+                rel = j.relative_to(dist_dir)
+                lines.append(f"• {rel}")
+            except Exception:
+                lines.append(f"• {j.name}")
         if len(jars) > 10:
             lines.append(f"  … and {len(jars) - 10} more")
         self._lbl_dist.setText("\n".join(lines))

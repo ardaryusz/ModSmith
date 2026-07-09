@@ -242,6 +242,10 @@ def run_app() -> int:
     font = QFont("Segoe UI", 10)
     app.setFont(font)
 
+    # Enable console window hiding for all subprocesses globally in the GUI
+    from modsmith.utils import set_hide_windows
+    set_hide_windows(True)
+
     # Import here to keep Qt import cascade after QApplication is created
     from modsmith_gui.main_window import MainWindow  # noqa: PLC0415
 

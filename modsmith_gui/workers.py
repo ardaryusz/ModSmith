@@ -256,10 +256,14 @@ class BuildWorker(QThread):
         self.log_line.emit(f"[INFO]  Building {target} with Gradle…")
         self.log_line.emit("[INFO]  (This may take several minutes.)")
         try:
+            def log_callback(line: str) -> None:
+                self.log_line.emit(line)
+
             result = build(
                 workspace_dir=self._workspace_dir,
                 mods_dir=self._mods_dir,
                 branch=self._branch,
+                on_log_line=log_callback,
             )
         except BuildError as exc:
             self.log_line.emit(f"[ERROR] {exc}")

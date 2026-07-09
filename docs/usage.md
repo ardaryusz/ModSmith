@@ -20,7 +20,7 @@ graph TD
    Translates your recipes, parses metadata, configures build environments, and generates the mod repository files in the `MODS/` directory.
 
 3. **`modsmith_cli build`** (or **`python -m modsmith build`** when running from source)
-   Runs the Gradle wrappers in the generated directories to compile the targets, producing final mod `.jar` files in `WORKSPACE/DIST/`.
+   Runs the Gradle wrappers in the generated directories to compile the targets, producing final mod `.jar` files in `WORKSPACE/DIST/<modid>-<mod_version>/`.
 
 4. **`modsmith_cli clean`** (or **`python -m modsmith clean`** when running from source)
    Recursively cleans the generated mod repository directories.
@@ -39,12 +39,12 @@ The following directories reside under your `MODSMITH_HOME` (or the folder from 
   Place all your custom recipe JSON files here. You can use either legacy (1.20) or modern (1.21) recipe formats, and ModSmith will handle conversion.
 * **`WORKSPACE/README/`**
   *Optional.* Contains a `README.md` that is automatically copied to the root of each generated mod target branch.
-* **`WORKSPACE/LICENSE/`**
-  *Optional.* Contains a `LICENSE.md` or `LICENSE.txt` file that is automatically copied to the root of each generated mod target branch (normalized to uppercase `LICENSE`).
-* **`WORKSPACE/ASSETS/`**
+* **WORKSPACE/LICENSE/**
+  *Optional.* Contains a license file (e.g., `LICENSE`, `LICENSE.md`, `LICENSE.txt`, `LICENSE.html`, or `LICENSE.docx`) that is automatically copied to the root of each generated mod target branch (normalized to uppercase `LICENSE` while preserving the file extension).
+* **WORKSPACE/ASSETS/**
   *Optional.* Stores README images and mod icons. README images use relative paths like `../ASSETS/image.png`. Mod icons are referenced in `modsmith.json` via the `icon` field.
-* **`WORKSPACE/DIST/`**
-  The target folder where finalized, compiled mod release `.jar` files are copied after a successful `build`.
+* **WORKSPACE/DIST/**
+  The target folder where finalized, compiled mod release `.jar` files are copied into versioned subfolders (`WORKSPACE/DIST/<modid>-<mod_version>/`) after a successful `build`. Old version directories remain untouched.
 * **`MODS/`**
   Where the generated mod target repositories are created and managed by ModSmith.
 
@@ -144,11 +144,11 @@ During the `generate` phase, ModSmith initializes a local Git repository inside 
 
 ## DIST Output
 
-After running the `build` command (`modsmith_cli build` or `python -m modsmith build`), the compiled binary outputs are retrieved from the build directory of each target branch and copied to your `WORKSPACE/DIST/` folder. They follow this naming convention:
+After running the `build` command (`modsmith_cli build` or `python -m modsmith build`), the compiled binary outputs are retrieved from the build directory of each target branch and copied to your `WORKSPACE/DIST/<modid>-<mod_version>/` folder. They follow this naming convention:
 ```
 <mod_id>-<mc_version_label>-<loader>-<mod_version>.jar
 ```
-For example: `easypeasygunpowder-1.20.1-forge-1.1.0.jar`
+For example: `easypeasygunpowder-1.20.1-forge-1.1.0.jar` inside `WORKSPACE/DIST/easypeasygunpowder-1.1.0/`.
 
 `mc_version_label` is derived from the target's `minecraft_version` (e.g. `1.20.1`) or `from-through` for inclusive version ranges (e.g. `1.21.2-1.21.11`).
 

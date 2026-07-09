@@ -46,7 +46,7 @@
 !define PRODUCT_PUBLISHER "ModSmith Project"
 !define PRODUCT_WEB       "https://github.com/modsmith"
 
-VIProductVersion "2.0.2.0"
+VIProductVersion "2.0.3.0"
 VIAddVersionKey "ProductName" "${PRODUCT_NAME}"
 VIAddVersionKey "ProductVersion" "${PRODUCT_VERSION}"
 VIAddVersionKey "FileVersion" "${PRODUCT_VERSION}"

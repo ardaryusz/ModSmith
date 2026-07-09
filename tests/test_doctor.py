@@ -146,7 +146,7 @@ class TestDoctorDiagnostics(unittest.TestCase):
         self.assertTrue(any("gradle-wrapper.jar is missing" in e for e in result.errors), result.errors)
 
     def test_doctor_warns_when_dist_has_no_jars_or_missing(self):
-        """Doctor registers a warning when WORKSPACE/DIST has no JAR files or is missing entirely."""
+        """Doctor registers an info when WORKSPACE/DIST has no JAR files or is missing entirely."""
         # Case A: DIST exists but is empty
         with _WorkspaceFactory() as ws:
             ws.build_valid()
@@ -165,7 +165,7 @@ class TestDoctorDiagnostics(unittest.TestCase):
                 )
 
         self.assertTrue(result.ok)
-        self.assertTrue(any("contains no JAR files" in w for w in result.warnings), result.warnings)
+        self.assertTrue(any("contains no built JAR files yet" in inf for inf in result.infos), result.infos)
 
         # Case B: DIST does not exist
         with _WorkspaceFactory() as ws:
@@ -184,7 +184,7 @@ class TestDoctorDiagnostics(unittest.TestCase):
                 )
 
         self.assertTrue(result.ok)
-        self.assertTrue(any("DIST directory does not exist" in w for w in result.warnings), result.warnings)
+        self.assertTrue(any("directory does not exist yet" in inf for inf in result.infos), result.infos)
 
     def test_doctor_reports_generated_repo_exists_when_present(self):
         """Doctor accurately logs whether the output mod repo directory exists in MODS."""

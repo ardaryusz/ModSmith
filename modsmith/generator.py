@@ -120,8 +120,11 @@ def clear_working_tree_selectively(repo_dir: Path, template_dir: Path) -> None:
     always_delete_names = {
         Path(".gitignore"),
         Path("README.md"),
+        Path("LICENSE"),
         Path("LICENSE.md"),
-        Path("LICENSE.txt")
+        Path("LICENSE.txt"),
+        Path("LICENSE.html"),
+        Path("LICENSE.docx")
     }
     
     # Walk the repo_dir and decide what to delete bottom-up
@@ -134,12 +137,9 @@ def clear_working_tree_selectively(repo_dir: Path, template_dir: Path) -> None:
         # Check if it should be deleted
         should_delete = False
         if rel in always_delete_names:
-            # For LICENSE.md and LICENSE.txt, only delete if NOT present in template
-            if rel.name.lower() == "license.md":
-                if not template_has_license_file(template_dir, ".md"):
-                    should_delete = True
-            elif rel.name.lower() == "license.txt":
-                if not template_has_license_file(template_dir, ".txt"):
+            name_lower = rel.name.lower()
+            if name_lower in ("license", "license.md", "license.txt", "license.html", "license.docx"):
+                if not template_has_license_file(template_dir, rel.suffix):
                     should_delete = True
             else:
                 should_delete = True
@@ -248,27 +248,12 @@ def generate(
     license_dir = mod_ctx.license_dir
     license_file = None
     if license_dir.is_dir():
-        md_matches = []
-        txt_matches = []
-        try:
-            for entry in license_dir.iterdir():
-                if entry.is_file():
-                    stem_lower = entry.stem.lower()
-                    ext_lower = entry.suffix.lower()
-                    if stem_lower == "license":
-                        if ext_lower == ".md":
-                            md_matches.append(entry)
-                        elif ext_lower == ".txt":
-                            txt_matches.append(entry)
-        except OSError:
-            pass
-
-        md_matches.sort(key=lambda p: p.name)
-        txt_matches.sort(key=lambda p: p.name)
-        total_matches = len(md_matches) + len(txt_matches)
-        if total_matches > 1:
-            selected_name = md_matches[0].name if md_matches else txt_matches[0].name
-            print(f"Multiple license files found; using {selected_name}")
+        from modsmith.context import get_license_candidates
+        candidates = get_license_candidates(license_dir)
+        if len(candidates) > 1:
+            names = [c.name for c in candidates]
+            selected = candidates[0]
+            print(f"Multiple license files found (candidates: {', '.join(names)}); using {selected.name}")
         
         license_file = discover_license_file(license_dir)
         if license_file is not None:
@@ -350,45 +335,39 @@ def generate(
         else:
             _write_default_readme(readme_dest, mod_ctx)
 
-        # Copy workspace LICENSE if found
-        out_license_md = output_repo_dir / "LICENSE.md"
-        out_license_txt = output_repo_dir / "LICENSE.txt"
+        # Copy workspace LICENSE if found and clean up stale alternate files
+        managed_names = ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENSE.html", "LICENSE.docx"]
 
         if license_file is not None:
             dest_name = f"LICENSE{license_file.suffix.lower()}"
             dest_path = output_repo_dir / dest_name
-
-            # Clean up the stale alternate license format if not provided by the template
-            if license_file.suffix.lower() == ".md":
-                if out_license_txt.exists() and not template_has_license_file(tc.template_dir, ".txt"):
-                    try:
-                        out_license_txt.unlink()
-                    except Exception:
-                        pass
-            elif license_file.suffix.lower() == ".txt":
-                if out_license_md.exists() and not template_has_license_file(tc.template_dir, ".md"):
-                    try:
-                        out_license_md.unlink()
-                    except Exception:
-                        pass
 
             try:
                 shutil.copy2(license_file, dest_path)
                 print(f"Copied license to generated branch: {dest_name}")
             except Exception as exc:
                 raise ValueError(f"Failed to copy license file '{license_file}' to '{dest_path}': {exc}")
+
+            # Clean up other stale alternate license formats if not provided by the template
+            for m_name in managed_names:
+                if m_name.lower() != dest_name.lower():
+                    stale_file = output_repo_dir / m_name
+                    ext = Path(m_name).suffix
+                    if stale_file.exists() and not template_has_license_file(tc.template_dir, ext):
+                        try:
+                            stale_file.unlink()
+                        except Exception:
+                            pass
         else:
-            # If no license is selected in workspace, clean up any stale license files not provided by the template
-            if out_license_md.exists() and not template_has_license_file(tc.template_dir, ".md"):
-                try:
-                    out_license_md.unlink()
-                except Exception:
-                    pass
-            if out_license_txt.exists() and not template_has_license_file(tc.template_dir, ".txt"):
-                try:
-                    out_license_txt.unlink()
-                except Exception:
-                    pass
+            # If no workspace license is selected, clean up any stale alternate formats not provided by the template
+            for m_name in managed_names:
+                stale_file = output_repo_dir / m_name
+                ext = Path(m_name).suffix
+                if stale_file.exists() and not template_has_license_file(tc.template_dir, ext):
+                    try:
+                        stale_file.unlink()
+                    except Exception:
+                        pass
 
         # Copy mod icon to loader-specific resource location (PNG only)
         if mod_ctx.config.icon:
