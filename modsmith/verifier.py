@@ -410,6 +410,53 @@ def _verify_gradle_wrapper(
 # ---------------------------------------------------------------------------
 
 
+def _verify_no_mixins(
+    repo_root: Path,
+    ctx: TargetContext,
+    result: VerificationResult,
+) -> None:
+    """Check 6: verify no project-owned Mixin artifacts exist in generated project."""
+    # 1. No mixins key in fabric.mod.json
+    fabric_json = repo_root / "src" / "main" / "resources" / "fabric.mod.json"
+    if fabric_json.exists():
+        try:
+            with open(fabric_json, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if "mixins" in data:
+                result.errors.append("fabric.mod.json contains forbidden top-level 'mixins' key.")
+        except Exception as exc:
+            result.errors.append(f"Cannot parse fabric.mod.json: {exc}")
+
+    # 2. No *.mixins.json or *.refmap.json files
+    res_dirs = [
+        repo_root / "src" / "main" / "resources",
+        repo_root / "src" / "client" / "resources",
+    ]
+    for rdir in res_dirs:
+        if rdir.is_dir():
+            for f in rdir.rglob("*"):
+                if f.is_file():
+                    n_lower = f.name.lower()
+                    if n_lower.endswith(".mixins.json") or (n_lower.endswith(".refmap.json") and not n_lower.startswith("minecraft")):
+                        result.errors.append(f"Forbidden Mixin/refmap resource file present: {f.relative_to(repo_root)}")
+
+    # 3. No Mixin source classes
+    src_dir = repo_root / "src"
+    if src_dir.is_dir():
+        for f in src_dir.rglob("*"):
+            if f.is_file() and f.suffix in (".java", ".kt"):
+                parts_lower = [p.lower() for p in f.parts]
+                if "mixin" in parts_lower or "mixins" in parts_lower or "examplemixin" in f.name.lower():
+                    result.errors.append(f"Forbidden Mixin source file present: {f.relative_to(repo_root)}")
+                else:
+                    try:
+                        content = f.read_text(encoding="utf-8")
+                        if "org.spongepowered.asm.mixin" in content:
+                            result.errors.append(f"Source file '{f.relative_to(repo_root)}' contains Sponge Mixin imports.")
+                    except Exception:
+                        pass
+
+
 def verify_generated_project(
     repo_root: Path,
     ctx: TargetContext,
@@ -423,14 +470,7 @@ def verify_generated_project(
     3. Java source cleanliness (one file, correct package, no template remnants)
     4. Loader metadata presence and absence of example strings
     5. Gradle wrapper scripts and JAR
-
-    Parameters
-    ----------
-    repo_root:
-        Absolute path to the checked-out generated project root (one branch).
-    ctx:
-        The :class:`TargetContext` for that branch, carrying mod id, loader,
-        package, main class, and recipe format information.
+    6. Absence of project-owned Mixins
     """
     repo_root = Path(repo_root)
     result = VerificationResult()
@@ -439,5 +479,6 @@ def verify_generated_project(
     _verify_java_sources(repo_root, ctx, result)
     _verify_metadata(repo_root, ctx, result)
     _verify_gradle_wrapper(repo_root, result)
+    _verify_no_mixins(repo_root, ctx, result)
 
     return result

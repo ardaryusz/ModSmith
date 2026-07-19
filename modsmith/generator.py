@@ -196,6 +196,152 @@ def _verify_overwrite_safe(repo_dir: Path, filename: str):
         )
 
 
+def normalize_no_mixins(repo_dir: Path, loader: str) -> list[str]:
+    """Perform deterministic, idempotent post-copy normalization to eliminate all project-owned Mixin usage
+    and invalid Fabric entrypoints.
+    """
+    warnings: list[str] = []
+    repo_dir = Path(repo_dir)
+
+    # 1. Delete Mixin Java/Kotlin source classes & packages
+    repo_dir_resolved = repo_dir.resolve()
+    src_dir = repo_dir / "src"
+    if src_dir.is_dir():
+        for ext in ("*.java", "*.kt"):
+            for f in list(src_dir.rglob(ext)):
+                if not f.exists():
+                    continue
+                name_lower = f.name.lower()
+                parts_lower = [p.lower() for p in f.parts]
+                is_mixin = "mixin" in parts_lower or "mixins" in parts_lower or "examplemixin" in name_lower
+                if not is_mixin:
+                    try:
+                        content = f.read_text(encoding="utf-8")
+                        if "org.spongepowered.asm.mixin" in content:
+                            is_mixin = True
+                    except Exception:
+                        pass
+                if is_mixin:
+                    try:
+                        if f.resolve().is_relative_to(repo_dir_resolved):
+                            f.unlink()
+                    except Exception:
+                        pass
+
+        # Clean empty mixin packages bottom-up
+        for dirpath, dirnames, filenames in os.walk(src_dir, topdown=False):
+            if os.path.basename(dirpath).lower() in ("mixin", "mixins") and not os.listdir(dirpath):
+                try:
+                    p_dir = Path(dirpath)
+                    if p_dir.resolve().is_relative_to(repo_dir_resolved):
+                        os.rmdir(dirpath)
+                except Exception:
+                    pass
+
+    # 2. Delete Mixin configuration and refmap JSON resources
+    res_dirs = [
+        repo_dir / "src" / "main" / "resources",
+        repo_dir / "src" / "client" / "resources",
+    ]
+    for res_dir in res_dirs:
+        if res_dir.is_dir():
+            for f in list(res_dir.rglob("*")):
+                if f.is_file():
+                    name_lower = f.name.lower()
+                    if name_lower.endswith(".mixins.json") or (name_lower.endswith(".refmap.json") and not name_lower.startswith("minecraft")):
+                        try:
+                            if f.resolve().is_relative_to(repo_dir_resolved):
+                                f.unlink()
+                        except Exception:
+                            pass
+
+    # 3. Clean fabric.mod.json (Fabric)
+    fabric_json_path = repo_dir / "src" / "main" / "resources" / "fabric.mod.json"
+    if fabric_json_path.exists():
+        try:
+            import json
+            with open(fabric_json_path, "r", encoding="utf-8") as f:
+                data = json.load(f, object_pairs_hook=dict)
+
+            # Remove mixins key
+            data.pop("mixins", None)
+
+            # Entrypoint audit
+            if "entrypoints" in data:
+                entrypoints = data["entrypoints"]
+                if isinstance(entrypoints, dict):
+                    cleaned_entrypoints = {}
+                    for ep_key, ep_val in entrypoints.items():
+                        if isinstance(ep_val, list):
+                            valid_list = []
+                            for class_name in ep_val:
+                                if isinstance(class_name, str):
+                                    rel_java = class_name.replace(".", "/") + ".java"
+                                    rel_kt = class_name.replace(".", "/") + ".kt"
+                                    has_class = (
+                                        (repo_dir / "src" / "main" / "java" / rel_java).exists() or
+                                        (repo_dir / "src" / "client" / "java" / rel_java).exists() or
+                                        (repo_dir / "src" / "main" / "java" / rel_kt).exists() or
+                                        (repo_dir / "src" / "client" / "java" / rel_kt).exists()
+                                    )
+                                    if has_class:
+                                        valid_list.append(class_name)
+                            if valid_list:
+                                cleaned_entrypoints[ep_key] = valid_list
+                        elif isinstance(ep_val, str):
+                            rel_java = ep_val.replace(".", "/") + ".java"
+                            rel_kt = ep_val.replace(".", "/") + ".kt"
+                            has_class = (
+                                (repo_dir / "src" / "main" / "java" / rel_java).exists() or
+                                (repo_dir / "src" / "client" / "java" / rel_java).exists() or
+                                (repo_dir / "src" / "main" / "java" / rel_kt).exists() or
+                                (repo_dir / "src" / "client" / "java" / rel_kt).exists()
+                            )
+                            if has_class:
+                                cleaned_entrypoints[ep_key] = ep_val
+
+                    if cleaned_entrypoints:
+                        data["entrypoints"] = cleaned_entrypoints
+                    else:
+                        data.pop("entrypoints", None)
+                elif not entrypoints:
+                    data.pop("entrypoints", None)
+
+            with open(fabric_json_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4)
+                f.write("\n")
+        except Exception as exc:
+            warnings.append(f"Failed to normalize fabric.mod.json: {exc}")
+
+    # 4. Clean build scripts for Mixin Gradle plugin / config
+    import re
+    for script_name in ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties"):
+        script_file = repo_dir / script_name
+        if script_file.exists():
+            try:
+                content = script_file.read_text(encoding="utf-8")
+                lines = content.splitlines()
+                new_lines = []
+                modified = False
+                for line in lines:
+                    if re.search(r'id\s+[\'"]org\.spongepowered\.mixin[\'"]', line):
+                        modified = True
+                        continue
+                    if "MixinConfigs" in line or "MixinConnector" in line:
+                        modified = True
+                        continue
+                    if "outRefMapFile" in line or "mixin.defaultRefmapName" in line:
+                        modified = True
+                        continue
+                    new_lines.append(line)
+                if modified:
+                    script_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+            except Exception:
+                pass
+
+    return warnings
+
+
 def generate(
     workspace_dir: Path,
     templates_dir: Path,
@@ -490,6 +636,8 @@ def generate(
         except Exception as exc:
             raise ValueError(f"Failed to copy template for '{tc.branch}': {exc}")
 
+
+
         # Delete modsmith-template.json if copied
         desc_file = output_repo_dir / "modsmith-template.json"
         if desc_file.exists():
@@ -497,6 +645,10 @@ def generate(
                 desc_file.unlink()
             except Exception:
                 pass
+
+        # Run post-copy no-Mixins & entrypoints normalization
+        norm_warnings = normalize_no_mixins(output_repo_dir, tc.loader)
+        warnings.extend(norm_warnings)
 
         # Write README.md
         readme_dest = output_repo_dir / "README.md"

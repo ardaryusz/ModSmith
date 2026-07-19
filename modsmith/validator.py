@@ -54,6 +54,87 @@ class ValidationResult:
         return len(self.errors) == 0
 
 
+def check_template_no_mixins(template_dir: Path) -> tuple[list[str], list[str]]:
+    """Scan a template directory for project-owned Mixin artifacts or configurations.
+
+    Returns a tuple of (safe_remnants, unsafe_remnants).
+    - safe_remnants: standard legacy Mixin files/configs that can be automatically normalized.
+    - unsafe_remnants: ambiguous or custom Mixin setups requiring hard-fail validation.
+    """
+    safe: list[str] = []
+    unsafe: list[str] = []
+    template_dir = Path(template_dir)
+    if not template_dir.is_dir():
+        return safe, unsafe
+
+    # 1. fabric.mod.json
+    fabric_json = template_dir / "src" / "main" / "resources" / "fabric.mod.json"
+    if fabric_json.exists():
+        try:
+            with open(fabric_json, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if "mixins" in data:
+                safe.append("fabric.mod.json: mixins")
+        except Exception:
+            pass
+
+    # 2. Resources (*.mixins.json, *.refmap.json)
+    res_dir = template_dir / "src" / "main" / "resources"
+    if res_dir.is_dir():
+        for f in res_dir.rglob("*"):
+            if f.is_file():
+                name_lower = f.name.lower()
+                if name_lower.endswith(".mixins.json") or (name_lower.endswith(".refmap.json") and not name_lower.startswith("minecraft")):
+                    safe.append(str(f.relative_to(template_dir)).replace("\\", "/"))
+
+    # 3. Source files
+    src_dir = template_dir / "src"
+    if src_dir.is_dir():
+        import re
+        for f in src_dir.rglob("*"):
+            if f.is_file() and f.suffix in (".java", ".kt"):
+                rel_path = str(f.relative_to(template_dir)).replace("\\", "/")
+                parts_lower = [p.lower() for p in f.parts]
+                if "mixin" in parts_lower or "mixins" in parts_lower or "examplemixin" in f.name.lower():
+                    safe.append(rel_path)
+                else:
+                    try:
+                        content = f.read_text(encoding="utf-8")
+                        if "org.spongepowered.asm.mixin" in content or re.search(r'@Mixin\b', content):
+                            # Mixin annotation inside non-mixin package/class is unsafe
+                            unsafe.append(f"{rel_path}: Mixin annotation in non-mixin class")
+                    except Exception:
+                        pass
+
+    # 4. Services & Connectors
+    services_dir = template_dir / "src" / "main" / "resources" / "META-INF" / "services"
+    if services_dir.is_dir():
+        for sfile in services_dir.glob("*mixin*"):
+            unsafe.append(str(sfile.relative_to(template_dir)).replace("\\", "/"))
+
+    # 5. Build scripts & manifests
+    import re
+    for script_name in ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties"):
+        sfile = template_dir / script_name
+        if sfile.exists():
+            try:
+                content = sfile.read_text(encoding="utf-8")
+                if re.search(r'id\s+[\'"]org\.spongepowered\.mixin[\'"]', content):
+                    safe.append(script_name)
+                elif (
+                    "MixinConfigs" in content
+                    or "MixinConnector" in content
+                    or "mixin.defaultRefmapName" in content
+                    or "outRefMapFile" in content
+                    or re.search(r'^\s*mixin\s*\{', content, re.MULTILINE)
+                ):
+                    unsafe.append(f"{script_name}: custom Mixin configuration")
+            except Exception:
+                pass
+
+    return safe, unsafe
+
+
 # ---------------------------------------------------------------------------
 # Public validator
 # ---------------------------------------------------------------------------
@@ -172,6 +253,21 @@ def validate_workspace(
                         load_template_descriptor(template_dir)
                     except ConfigError as exc:
                         result.add_error(str(exc))
+
+                # Check for project-owned Mixin remnants
+                safe_remnants, unsafe_remnants = check_template_no_mixins(template_dir)
+                if unsafe_remnants:
+                    rem_str = "\n".join(f"- {r}" for r in unsafe_remnants)
+                    result.add_error(
+                        f"Template '{t.template}' contains unsupported/ambiguous Mixin configuration:\n"
+                        f"{rem_str}\n"
+                        "Remove all project-owned Mixin usage before generating this template."
+                    )
+                elif safe_remnants:
+                    result.add_warning(
+                        f"Template '{t.template}' contains legacy Mixin artifacts; "
+                        "they will be removed from the generated recipe-mod branch."
+                    )
 
         # Check 15 — output repo must not already exist (unless --force)
         output_repo_dir = mods_dir / config.output_repo_name

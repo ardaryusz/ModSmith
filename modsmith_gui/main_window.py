@@ -92,6 +92,12 @@ class MainWindow(QMainWindow):
         # Top content area: [nav sidebar | screen stack]
         # ------------------------------------------------------------------
         top_content = QWidget()
+        top_content.setMinimumHeight(0)
+        top_content.setMinimumSize(0, 0)
+        top_content.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Ignored,
+        )
         top_layout = QHBoxLayout(top_content)
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(0)
@@ -101,9 +107,18 @@ class MainWindow(QMainWindow):
         self._nav.setFixedWidth(160)
         self._nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._nav.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Ignored,
+        )
 
         # --- Screen stack ---
         self._stack = QStackedWidget()
+        self._stack.setMinimumHeight(0)
+        self._stack.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Ignored,
+        )
 
         # Build screens
         self._screens: list[QWidget] = []
@@ -151,21 +166,21 @@ class MainWindow(QMainWindow):
         log_container_layout.setSpacing(0)
         log_container_layout.addWidget(log_label)
         log_container_layout.addWidget(self._log_panel)
-        log_container.setMinimumHeight(80)
+        log_container.setMinimumHeight(60)
 
         # ------------------------------------------------------------------
         # Vertical QSplitter: top content above, log panel below
         # ------------------------------------------------------------------
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.setChildrenCollapsible(False)
-        splitter.addWidget(top_content)
-        splitter.addWidget(log_container)
+        self._splitter = QSplitter(Qt.Orientation.Vertical)
+        self._splitter.addWidget(top_content)
+        self._splitter.addWidget(log_container)
+        self._splitter.setCollapsible(0, True)
+        self._splitter.setCollapsible(1, False)
 
         # Default sizes: top area gets ~460 px, log gets ~140 px.
-        # These proportions match the previous fixed-height look at 620 px total.
-        splitter.setSizes([460, 140])
+        self._splitter.setSizes([460, 140])
 
-        outer.addWidget(splitter)
+        outer.addWidget(self._splitter)
 
     # ------------------------------------------------------------------
     # Slots

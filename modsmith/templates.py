@@ -8,6 +8,35 @@ from modsmith.context import TargetContext
 from modsmith.utils import is_valid_java_package, is_valid_java_identifier
 
 
+OFFICIAL_TEMPLATE_NAMES = [
+    "easypeasyslime-fabric-1.21-1.21.1",
+    "easypeasyslime-fabric-1.21.2-1.21.11",
+    "forge-1.20.1",
+    "forge-1.21-1.21.1",
+    "forge-1.21.2-1.21.11",
+]
+
+
+def sync_official_templates(repo_templates_dir: Path, runtime_templates_dir: Path) -> list[str]:
+    """Synchronize official ModSmith-managed templates from repository source of truth to runtime MODSMITH_HOME.
+
+    Only official ModSmith-managed templates are copied (repo -> runtime).
+    User-created templates in runtime_templates_dir are preserved and never overwritten or removed.
+    """
+    synced = []
+    repo_templates_dir = Path(repo_templates_dir).resolve()
+    runtime_templates_dir = Path(runtime_templates_dir).resolve()
+    runtime_templates_dir.mkdir(parents=True, exist_ok=True)
+
+    for name in OFFICIAL_TEMPLATE_NAMES:
+        src = repo_templates_dir / name
+        if src.is_dir():
+            dest = runtime_templates_dir / name
+            copy_template(src, dest)
+            synced.append(name)
+    return synced
+
+
 def list_templates(templates_dir: Path) -> list[str]:
     """Return immediate child directory names under templates_dir, sorted alphabetically."""
     templates_dir = Path(templates_dir)
@@ -76,22 +105,24 @@ def write_java_entrypoint(repo_root: Path, ctx: TargetContext) -> list[str]:
         warnings.append("Could not find or create Java source root.")
         return warnings
 
-    # Delete ALL pre-existing .java files so no template example classes survive
-    # (e.g. ExampleMod.java, Config.java from Forge templates).
+    # Delete example template classes (e.g. ExampleMod.java, Config.java in example package, ExampleMixin.java)
+    # while preserving non-example, non-Mixin Java source classes.
     if java_root.exists():
         for java_file in list(java_root.rglob("*.java")):
-            try:
-                java_file.unlink()
-            except Exception:
-                pass
-        # Prune any directories that became empty after the deletion
-        # (bottom-up so inner dirs are removed before outer dirs)
+            rel_p = str(java_file.relative_to(java_root)).replace("\\", "/")
+            rel_lower = rel_p.lower()
+            if "com/example/examplemod" in rel_lower or "examplemod.java" in rel_lower or "examplemixin.java" in rel_lower or "/mixin/" in rel_lower or "/mixins/" in rel_lower:
+                try:
+                    java_file.unlink()
+                except Exception:
+                    pass
+        # Prune empty directories bottom-up
         for empty_dir in sorted(java_root.rglob("*"), reverse=True):
             if empty_dir.is_dir():
                 try:
-                    empty_dir.rmdir()  # only succeeds when the directory is truly empty
+                    empty_dir.rmdir()
                 except OSError:
-                    pass  # not empty — leave it
+                    pass
 
     package = ctx.mod_ctx.package
     main_class = ctx.mod_ctx.main_class

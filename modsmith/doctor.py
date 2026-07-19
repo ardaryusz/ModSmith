@@ -284,6 +284,17 @@ def diagnose_environment(
                 except ConfigError as exc:
                     result.add_error(f"Target '{target.branch}': failed to parse template descriptor: {exc}")
 
+            # Check for project-owned Mixins
+            from modsmith.validator import check_template_no_mixins
+            safe_remnants, unsafe_remnants = check_template_no_mixins(t_dir)
+            all_remnants = safe_remnants + unsafe_remnants
+            if all_remnants:
+                result.add_warning(
+                    f"Template '{target.template}': project-owned Mixin remnants detected: {', '.join(all_remnants)}"
+                )
+            else:
+                result.add_info(f"Template '{target.template}': no project-owned Mixin usage detected")
+
             # Check gradlew / gradlew.bat
             gradlew = t_dir / "gradlew"
             gradlew_bat = t_dir / "gradlew.bat"
