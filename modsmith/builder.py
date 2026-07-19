@@ -12,6 +12,7 @@ Public API
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -46,6 +47,8 @@ class BuildResult:
     copied_jars: list[Path]
     warnings: list[str]
     dry_run: bool = False
+    #: Maps branch name -> destination JAR path for per-branch log output.
+    jar_map: dict[str, Path] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +68,46 @@ def _is_release_jar(name: str) -> bool:
     return name.endswith(".jar") and not any(
         name.endswith(s) for s in _EXCLUDED_SUFFIXES
     )
+
+
+# ---------------------------------------------------------------------------
+# Branch-name sanitization helpers
+# ---------------------------------------------------------------------------
+
+# Characters illegal in Windows filenames (beyond NUL, which Path handles)
+_ILLEGAL_WIN_CHARS = re.compile(r'[<>:"/\\|?*]')
+# Leading/trailing dots and spaces are problematic on Windows
+_TRIM_CHARS = re.compile(r'^[\s.]+|[\s.]+$')
+
+
+def _sanitize_branch_name(branch: str) -> str:
+    """Return a filename-safe version of *branch*.
+
+    Transformations applied (in order):
+    1. Replace ``/`` and ``\\`` with ``-``.
+    2. Strip characters illegal on Windows filenames: ``< > : " | ? *``.
+    3. Trim leading/trailing spaces and dots.
+    4. Collapse runs of ``-`` into a single ``-``.
+    5. Fall back to ``_branch_`` if the result is empty.
+    """
+    safe = branch.replace("/", "-").replace("\\", "-")
+    safe = _ILLEGAL_WIN_CHARS.sub("", safe)
+    safe = _TRIM_CHARS.sub("", safe)
+    safe = re.sub(r"-{2,}", "-", safe)
+    return safe or "_branch_"
+
+
+def _make_dist_jar_name(mod_id: str, branch: str, mod_version: str) -> str:
+    """Return the canonical DIST filename for a target branch.
+
+    Format: ``<mod_id>-<sanitized_branch>-<mod_version>.jar``
+
+    Example::
+
+        _make_dist_jar_name("easypeasyslime", "fabric-1.21-1.21.1", "1.0.1")
+        # → "easypeasyslime-fabric-1.21-1.21.1-1.0.1.jar"
+    """
+    return f"{mod_id}-{_sanitize_branch_name(branch)}-{mod_version}.jar"
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +182,7 @@ def run_gradle_build(
 
 
 # ---------------------------------------------------------------------------
-# Helper: clean stale target JARs
+# Helper: clean stale target JARs (branch-name scoped)
 # ---------------------------------------------------------------------------
 
 
@@ -148,45 +191,25 @@ def _clean_stale_jars_for_branch(
     mod_id: str,
     mod_version: str,
     branch_name: str,
-    loader: str,
-    mc_version: str,
-    new_jar_names: set[str],
 ) -> None:
-    """Removes stale ModSmith-produced JARs in dist_dir for the branch currently being built.
+    """Remove any previously-collected JAR for *branch_name* in *dist_dir*.
 
-    Any JAR matching the mod_id, mod_version, and containing the loader name and mc version base
-    that is NOT in new_jar_names is considered stale and deleted.
+    Only the deterministic branch-based filename is targeted:
+    ``<mod_id>-<sanitized_branch>-<mod_version>.jar``
+
+    This prevents stale files from a previous build run for the same branch
+    without touching JARs produced by other branches.
     """
     if not dist_dir.is_dir():
         return
 
-    loader_lower = loader.lower()
-    mc_parts = mc_version.split(".")
-    mc_base = f"{mc_parts[0]}.{mc_parts[1]}" if len(mc_parts) >= 2 else mc_version
-
-    # Check for any loader keywords in branch name
-    branch_lower = branch_name.lower()
-    branch_loaders = [kw for kw in ("forge", "fabric", "neoforge") if kw in branch_lower]
-
-    for entry in dist_dir.glob("*.jar"):
-        if not entry.is_file():
-            continue
-        if entry.name in new_jar_names:
-            continue
-
-        name = entry.name
-        if name.startswith(f"{mod_id}-") and name.endswith(f"-{mod_version}.jar"):
-            middle = name[len(mod_id) + 1 : -len(mod_version) - 5].lower()
-            
-            # Check if this jar belongs to the current target branch being built
-            loader_match = (loader_lower in middle) or any(kw in middle for kw in branch_loaders)
-            mc_match = mc_base in middle
-            
-            if loader_match and mc_match:
-                try:
-                    entry.unlink()
-                except Exception:
-                    pass
+    expected_name = _make_dist_jar_name(mod_id, branch_name, mod_version)
+    stale = dist_dir / expected_name
+    if stale.is_file():
+        try:
+            stale.unlink()
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -200,21 +223,34 @@ def collect_built_jars(
     mod_id: str | None = None,
     mod_version: str | None = None,
     branch_name: str | None = None,
+    # Kept for backward compatibility but no longer used for naming:
     loader: str | None = None,
     mc_version: str | None = None,
-) -> list[Path]:
-    """Copy release JARs from ``build/libs/`` into *dist_dir*.
+    # Tracks dest paths already written in this build run (collision guard):
+    _seen_dest: dict[str, str] | None = None,
+) -> tuple[list[Path], Path | None]:
+    """Copy the release JAR from ``build/libs/`` into *dist_dir*.
 
-    Excluded patterns (not copied):
-    - ``*-sources.jar``
-    - ``*-javadoc.jar``
-    - ``*-dev.jar``
-    - ``*-dev-shadow.jar``
+    When *mod_id*, *mod_version*, and *branch_name* are all provided the
+    destination filename is computed as::
 
-    Returns the list of destination paths for every JAR that was copied.
+        <mod_id>-<sanitized_branch_name>-<mod_version>.jar
 
-    Raises :class:`BuildError` if ``build/libs/`` does not exist or contains
-    no valid release JARs.
+    This guarantees a unique filename per configured target regardless of the
+    Gradle-generated name.
+
+    Returns
+    -------
+    tuple[list[Path], Path | None]
+        A tuple of ``(copied_paths, dist_jar_path)`` where *dist_jar_path*
+        is the single branch-named destination (or ``None`` if branch naming
+        was not used).
+
+    Raises :class:`BuildError` if:
+    - ``build/libs/`` does not exist.
+    - No valid release JAR is found there.
+    - Two different branches resolve to the same DIST filename in the same
+      build run (collision).
     """
     libs_dir = repo_dir / "build" / "libs"
     if not libs_dir.is_dir():
@@ -232,25 +268,46 @@ def collect_built_jars(
 
     dist_dir.mkdir(parents=True, exist_ok=True)
     copied: list[Path] = []
-    new_jar_names = {jar.name for jar in candidates}
+    branch_dest: Path | None = None
 
-    # Clean up stale JARs for this branch if we have target metadata
-    if mod_id and mod_version and branch_name and loader and mc_version:
-        _clean_stale_jars_for_branch(
-            dist_dir,
-            mod_id,
-            mod_version,
-            branch_name,
-            loader,
-            mc_version,
-            new_jar_names,
-        )
+    use_branch_naming = bool(mod_id and mod_version and branch_name)
+
+    if use_branch_naming:
+        # Clean the previous JAR for this branch (from an earlier run).
+        _clean_stale_jars_for_branch(dist_dir, mod_id, mod_version, branch_name)
+
+        # Collision guard: check BEFORE the loop because all source JARs in
+        # build/libs will be renamed to the same branch-based dest name.
+        # The guard must fire only when a *different* branch tries to claim
+        # the same dest name — not when the same branch produces multiple
+        # intermediate JARs (e.g. shadow + regular release).
+        branch_dest_name = _make_dist_jar_name(mod_id, branch_name, mod_version)
+        if _seen_dest is not None:
+            if branch_dest_name in _seen_dest:
+                other_branch = _seen_dest[branch_dest_name]
+                if other_branch != branch_name:
+                    raise BuildError(
+                        f"JAR filename collision detected: both target branch "
+                        f"'{other_branch}' and '{branch_name}' would produce "
+                        f"'{branch_dest_name}'. Ensure branch names are unique."
+                    )
+            else:
+                _seen_dest[branch_dest_name] = branch_name
 
     for jar in sorted(candidates):
-        dest = dist_dir / jar.name
+        if use_branch_naming:
+            dest_name = branch_dest_name  # pre-computed above
+        else:
+            dest_name = jar.name
+
+        dest = dist_dir / dest_name
         shutil.copy2(jar, dest)
-        copied.append(dest)
-    return copied
+        if dest not in copied:
+            copied.append(dest)
+        if use_branch_naming:
+            branch_dest = dest
+
+    return copied, branch_dest
 
 
 # ---------------------------------------------------------------------------
@@ -281,14 +338,15 @@ def build(
        a. ``git checkout``
        b. find Gradle wrapper
        c. ``gradlew clean build``
-       d. copy release JARs to ``WORKSPACE/DIST/<modid>-<mod_version>/``
+       d. copy release JAR to ``WORKSPACE/DIST/<modid>-<mod_version>/``
+          using the branch-based unique filename.
     7. Leave the repo checked out on the **first** branch that was built.
 
     Raises
     ------
     :class:`BuildError`
          For any user-fixable problem (missing repo, missing branch, Gradle
-         failure, missing JARs).
+         failure, missing JARs, or a JAR filename collision between targets).
     """
     workspace_dir = Path(workspace_dir).resolve()
     mods_dir = Path(mods_dir).resolve()
@@ -351,10 +409,14 @@ def build(
     # 6. Real build
     built: list[str] = []
     all_jars: list[Path] = []
+    jar_map: dict[str, Path] = {}
 
     versioned_dist_dir = dist_dir / f"{config.mod_id}-{config.mod_version}"
 
-    for i, br in enumerate(requested):
+    # Tracks dest filenames written in this build run to detect collisions.
+    seen_dest: dict[str, str] = {}
+
+    for br in requested:
         # Checkout
         try:
             git_checkout(repo_dir, br)
@@ -368,14 +430,10 @@ def build(
         run_gradle_build(repo_dir, wrapper, on_log_line=on_log_line)
 
         # Find target configuration details
-        target_cfg = None
-        for t in config.targets:
-            if t.branch == br:
-                target_cfg = t
-                break
+        target_cfg = next((t for t in config.targets if t.branch == br), None)
 
-        # Collect JARs
-        jars = collect_built_jars(
+        # Collect JARs — uses branch-based unique naming
+        jars, branch_jar = collect_built_jars(
             repo_dir,
             versioned_dist_dir,
             mod_id=config.mod_id,
@@ -383,8 +441,11 @@ def build(
             branch_name=br,
             loader=target_cfg.loader if target_cfg else None,
             mc_version=target_cfg.minecraft_version if target_cfg else None,
+            _seen_dest=seen_dest,
         )
         all_jars.extend(jars)
+        if branch_jar is not None:
+            jar_map[br] = branch_jar
         built.append(br)
 
     # 7. Leave on first built branch
@@ -402,4 +463,5 @@ def build(
         copied_jars=all_jars,
         warnings=warnings,
         dry_run=False,
+        jar_map=jar_map,
     )

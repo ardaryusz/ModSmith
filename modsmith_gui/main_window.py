@@ -7,10 +7,16 @@ Layout
 | Nav   |   Screen (QStackedWidget)        |
 | list  |                                  |
 |       |                                  |
-+-------+------ LogPanel (shared) ---------+
++-------+------------ QSplitter -----------+
+                (vertical, resizable)
+         ┌── top content area above ──┐
+         └── Output Log panel below  ──┘
 
 The left nav list drives the QStackedWidget.  The LogPanel at the bottom
 is shared across screens so that doctor output lands in one consistent place.
+
+The vertical QSplitter between the main content area and the log panel lets
+the user drag the separator to make the Output Log taller or shorter.
 
 When the HomeScreen emits ``home_changed``, we call ``refresh()`` on every
 screen that exposes that method so all displayed paths stay in sync.
@@ -21,7 +27,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QListWidget, QListWidgetItem, QStackedWidget,
-    QSizePolicy, QLabel,
+    QSizePolicy, QLabel, QSplitter,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
@@ -75,17 +81,18 @@ class MainWindow(QMainWindow):
         # Shared LogPanel (lives at the bottom, shared across all screens)
         # ------------------------------------------------------------------
         self._log_panel = LogPanel()
-        self._log_panel.setMinimumHeight(120)
-        self._log_panel.setMaximumHeight(240)
+        self._log_panel.setMinimumHeight(60)
+        # Remove fixed height so the splitter controls the size freely.
         self._log_panel.setSizePolicy(
             QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Expanding,
         )
 
         # ------------------------------------------------------------------
-        # Top content area: [nav sidebar | screen stack] using normal QHBoxLayout
+        # Top content area: [nav sidebar | screen stack]
         # ------------------------------------------------------------------
-        top_layout = QHBoxLayout()
+        top_content = QWidget()
+        top_layout = QHBoxLayout(top_content)
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.setSpacing(0)
 
@@ -130,7 +137,7 @@ class MainWindow(QMainWindow):
         top_layout.addWidget(self._stack, stretch=1)
 
         # ------------------------------------------------------------------
-        # Log area separator label
+        # Log area: label + panel, wrapped in a container widget
         # ------------------------------------------------------------------
         log_label = QLabel("  Output Log")
         log_label.setStyleSheet(
@@ -138,12 +145,27 @@ class MainWindow(QMainWindow):
             "padding: 2px 6px; border-top: 1px solid #bbb;"
         )
 
+        log_container = QWidget()
+        log_container_layout = QVBoxLayout(log_container)
+        log_container_layout.setContentsMargins(0, 0, 0, 0)
+        log_container_layout.setSpacing(0)
+        log_container_layout.addWidget(log_label)
+        log_container_layout.addWidget(self._log_panel)
+        log_container.setMinimumHeight(80)
+
         # ------------------------------------------------------------------
-        # Compose outer layout: top layout on top, log at bottom
+        # Vertical QSplitter: top content above, log panel below
         # ------------------------------------------------------------------
-        outer.addLayout(top_layout, stretch=1)
-        outer.addWidget(log_label)
-        outer.addWidget(self._log_panel)
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.setChildrenCollapsible(False)
+        splitter.addWidget(top_content)
+        splitter.addWidget(log_container)
+
+        # Default sizes: top area gets ~460 px, log gets ~140 px.
+        # These proportions match the previous fixed-height look at 620 px total.
+        splitter.setSizes([460, 140])
+
+        outer.addWidget(splitter)
 
     # ------------------------------------------------------------------
     # Slots
@@ -161,4 +183,3 @@ class MainWindow(QMainWindow):
         screen = self._screens[index]
         if hasattr(screen, "refresh"):
             screen.refresh()
-

@@ -278,10 +278,15 @@ class BuildWorker(QThread):
             self.log_line.emit(f"[WARN]  {warn}")
 
         built = ", ".join(result.built_branches) or "(none)"
-        jars = [str(p.name) for p in result.copied_jars]
         self.log_line.emit(f"[INFO]  Built branches: {built}")
-        if jars:
-            self.log_line.emit(f"[INFO]  JARs collected: {', '.join(jars)}")
+        if result.jar_map:
+            self.log_line.emit("[INFO]  JARs collected:")
+            for br, jar_path in result.jar_map.items():
+                self.log_line.emit(f"[INFO]  - {br} -> {jar_path.name}")
+        elif result.copied_jars:
+            self.log_line.emit("[INFO]  JARs collected:")
+            for jar_path in result.copied_jars:
+                self.log_line.emit(f"[INFO]  - {jar_path.name}")
         summary = (
             f"Build complete — {len(result.built_branches)} branch(es), "
             f"{len(result.copied_jars)} JAR(s)"

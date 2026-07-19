@@ -401,15 +401,17 @@ def cmd_build(args: argparse.Namespace) -> int:
         for b in res.built_branches:
             print(f"  - {b}")
     else:
+        branch_list = ", ".join(res.built_branches) or "(none)"
         print(f"Build complete — repo: {res.repo_dir}")
-        print("Built branches:")
-        for b in res.built_branches:
-            print(f"  - {b}")
-        if res.copied_jars:
-            print(f"\nBuild output:\n{res.repo_dir}")
-            print("\nJARs copied:")
+        print(f"[INFO] Built branches: {branch_list}")
+        if res.jar_map:
+            print("[INFO] JARs collected:")
+            for br, jar_path in res.jar_map.items():
+                print(f"[INFO] - {br} -> {jar_path.name}")
+        elif res.copied_jars:
+            print("[INFO] JARs collected:")
             for j in res.copied_jars:
-                print(f"  - {j.name}")
+                print(f"[INFO] - {j.name}")
 
     return 0
 
