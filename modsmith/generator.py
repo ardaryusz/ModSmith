@@ -43,6 +43,13 @@ from modsmith.git_ops import (
     git_rm_all_tracked,
     git_current_branch,
 )
+from modsmith.gitignore_rules import (
+    ensure_gitignore_rules,
+    render_canonical_gitignore,
+    scan_template_for_artifacts,
+    scan_staged_for_artifacts,
+    scan_committed_for_artifacts,
+)
 
 
 @dataclass
@@ -624,11 +631,15 @@ def generate(
         # Clear working tree selectively, preserving unrelated user-added content
         clear_working_tree_selectively(output_repo_dir, tc.template_dir)
 
-        # Write standard .gitignore
-        try:
-            write_gitignore(output_repo_dir)
-        except Exception as exc:
-            warnings.append(f"Failed to write .gitignore for '{tc.branch}': {exc}")
+        # Layer 1 — scan source template for forbidden artifacts before copying
+        template_artifacts = scan_template_for_artifacts(tc.template_dir)
+        if template_artifacts:
+            detail = "\n".join(f"  - {p}" for p in template_artifacts)
+            raise GenerateError(
+                f"Source template '{tc.template}' contains build artifacts that must not be copied:\n"
+                + detail
+                + "\nClean the template directory before generating."
+            )
 
         # Copy template
         try:
@@ -636,7 +647,11 @@ def generate(
         except Exception as exc:
             raise ValueError(f"Failed to copy template for '{tc.branch}': {exc}")
 
-
+        # Post-copy: merge canonical .gitignore rules (preserves template rules, handles *.jar)
+        try:
+            ensure_gitignore_rules(output_repo_dir / ".gitignore")
+        except Exception as exc:
+            warnings.append(f"Failed to normalize .gitignore for '{tc.branch}': {exc}")
 
         # Delete modsmith-template.json if copied
         desc_file = output_repo_dir / "modsmith-template.json"
@@ -783,14 +798,38 @@ def generate(
                 + err_detail
             )
 
-        # Stage and commit
+        # Stage all changes
         try:
             git_add_all(output_repo_dir)
+        except Exception as exc:
+            raise ValueError(f"Failed to stage changes for '{tc.branch}': {exc}")
+
+        # Layer 2 — scan staged paths for forbidden artifacts
+        staged_artifacts = scan_staged_for_artifacts(output_repo_dir)
+        if staged_artifacts:
+            detail = "\n".join(f"  - {p}" for p in staged_artifacts)
+            raise GenerateError(
+                f"Generated target '{tc.branch}' contains build artifacts that must not be committed:\n"
+                + detail
+                + "\nClean the template or generation output before continuing."
+            )
+
+        # Commit
+        try:
             if git_has_staged_changes(output_repo_dir):
                 commit_msg = f"Generate {tc.loader} {tc.mc_range} version"
                 git_commit(output_repo_dir, commit_msg)
         except Exception as exc:
             raise ValueError(f"Failed to commit changes to '{tc.branch}': {exc}")
+
+        # Layer 3 — scan committed tree for forbidden artifacts
+        committed_artifacts = scan_committed_for_artifacts(output_repo_dir)
+        if committed_artifacts:
+            detail = "\n".join(f"  - {p}" for p in committed_artifacts)
+            raise GenerateError(
+                f"Branch '{tc.branch}' HEAD contains committed build artifacts:\n"
+                + detail
+            )
 
     # Checkout the first branch generated at the end
     final_checked_out = None
@@ -913,19 +952,11 @@ def generate(
 
             # --- Write .gitignore ---
             _verify_overwrite_safe(output_repo_dir, ".gitignore")
-            gitignore_content = (
-                "# IDE\n"
-                ".idea/\n"
-                ".vscode/\n"
-                "*.iml\n\n"
-                "# OS\n"
-                ".DS_Store\n"
-                "Thumbs.db\n\n"
-                "# ModSmith\n"
-                "*.log\n"
-            )
             gitignore_dest = output_repo_dir / ".gitignore"
-            gitignore_dest.write_text(gitignore_content, encoding="utf-8")
+            gitignore_dest.write_text(
+                render_canonical_gitignore(header_comment="# ModSmith managed"),
+                encoding="utf-8",
+            )
             files_written_this_attempt.append(gitignore_dest)
 
             # --- Stale files deletion ---

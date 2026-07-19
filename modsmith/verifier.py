@@ -457,6 +457,27 @@ def _verify_no_mixins(
                         pass
 
 
+def _verify_no_build_artifacts(
+    repo_root: Path,
+    result: VerificationResult,
+) -> None:
+    """Check 7: verify no build artifacts are staged for commit.
+
+    Inspects only staged paths (``git diff --cached --name-only``) so that
+    locally-present-but-git-ignored build directories do not trigger false
+    positives.
+    """
+    from modsmith.gitignore_rules import scan_staged_for_artifacts
+    try:
+        forbidden = scan_staged_for_artifacts(repo_root)
+        for path in forbidden:
+            result.errors.append(
+                f"Staged build artifact must not be committed: {path}"
+            )
+    except Exception as exc:
+        result.warnings.append(f"Could not scan staged paths for build artifacts: {exc}")
+
+
 def verify_generated_project(
     repo_root: Path,
     ctx: TargetContext,
@@ -471,6 +492,7 @@ def verify_generated_project(
     4. Loader metadata presence and absence of example strings
     5. Gradle wrapper scripts and JAR
     6. Absence of project-owned Mixins
+    7. Absence of staged build artifacts
     """
     repo_root = Path(repo_root)
     result = VerificationResult()
@@ -480,5 +502,6 @@ def verify_generated_project(
     _verify_metadata(repo_root, ctx, result)
     _verify_gradle_wrapper(repo_root, result)
     _verify_no_mixins(repo_root, ctx, result)
+    _verify_no_build_artifacts(repo_root, result)
 
     return result

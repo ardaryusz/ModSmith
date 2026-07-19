@@ -87,3 +87,35 @@ ModSmith supports:
 * **`fabric`**
 * **`forge`**
 * **`neoforge`**
+
+---
+
+## Repository Hygiene (.gitignore Management)
+
+ModSmith automatically normalizes .gitignore files on every generated branch so that Gradle build artifacts can never be accidentally committed.
+
+### Managed Branches
+
+| Branch | .gitignore policy |
+| :----- | :------------------ |
+| **Target branches** (fabric, forge, neoforge) | Template .gitignore is copied and then any missing canonical rules are merged in. Existing custom rules and comments are preserved. |
+| **Landing branch** | A fully canonical .gitignore is written by ModSmith on every generation (deterministic). |
+
+### Canonical Guaranteed Rules
+
+Every generated branch is guaranteed to ignore:
+.idea/, .vscode/, *.iml, out/, .DS_Store, Thumbs.db, .gradle/, uild/, 
+un/, logs/, *.class, *.log, hs_err_pid*, 
+eplay_pid*
+
+### Custom Template Rules
+
+If your custom template's .gitignore contains a bare *.jar rule, ModSmith automatically appends:
+
+`gitignore
+!gradle/wrapper/gradle-wrapper.jar
+`
+
+so that the Gradle wrapper JAR remains tracked. Official templates do not contain a bare *.jar rule.
+
+See [usage.md](usage.md#repository-hygiene) for full details.

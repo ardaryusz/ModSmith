@@ -45,22 +45,22 @@ def test_output_log_maximum_expansion_and_gui_features(qapp):
     )
 
     # 2. Test Clear and Copy All buttons
-    window.log_panel.append_log("Test log entry line 1")
-    window.log_panel.append_log("Test log entry line 2")
+    window._log_panel.append_line("Test log entry line 1")
+    window._log_panel.append_line("Test log entry line 2")
     qapp.processEvents()
 
-    assert "Test log entry line 1" in window.log_panel.log_edit.toPlainText()
+    assert "Test log entry line 1" in window._log_panel.text()
 
     # Test Copy All (invokes clipboard copy)
-    window.log_panel.copy_all_btn.click()
+    window._log_panel._btn_copy.click()
     qapp.processEvents()
     clipboard_text = QApplication.clipboard().text()
     assert "Test log entry line 1" in clipboard_text
 
     # Test Clear button
-    window.log_panel.clear_btn.click()
+    window._log_panel._btn_clear.click()
     qapp.processEvents()
-    assert window.log_panel.log_edit.toPlainText() == ""
+    assert window._log_panel.text() == ""
 
     # 3. Restore default sizes
     splitter.setSizes([460, 140])

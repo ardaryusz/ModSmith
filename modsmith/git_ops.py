@@ -72,18 +72,15 @@ def git_list_branches(repo_dir: Path) -> list[str]:
 
 
 def write_gitignore(repo_dir: Path) -> None:
-    """Write standard .gitignore file to repo_dir."""
-    gitignore_path = Path(repo_dir) / ".gitignore"
-    content = """.gradle/
-build/
-run/
-out/
-*.jar
-*.log
-.idea/
-__pycache__/
-"""
-    gitignore_path.write_text(content, encoding="utf-8")
+    """Write or update the .gitignore in *repo_dir* with all canonical rules.
+
+    If the file already exists (e.g. copied from a template), canonical rules
+    are merged in while preserving existing custom rules and comments.
+    A bare ``*.jar`` rule from legacy templates receives a
+    ``!gradle/wrapper/gradle-wrapper.jar`` negation exception.
+    """
+    from modsmith.gitignore_rules import ensure_gitignore_rules
+    ensure_gitignore_rules(Path(repo_dir) / ".gitignore")
 
 
 def _ensure_git_user_config(repo_dir: Path) -> None:

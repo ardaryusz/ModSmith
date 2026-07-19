@@ -295,6 +295,34 @@ def diagnose_environment(
             else:
                 result.add_info(f"Template '{target.template}': no project-owned Mixin usage detected")
 
+            # Check .gitignore completeness
+            from modsmith.gitignore_rules import REQUIRED_GITIGNORE_RULES
+            gi_path = t_dir / ".gitignore"
+            if gi_path.exists():
+                gi_text = gi_path.read_text(encoding="utf-8")
+                existing_lines = {
+                    line.strip().rstrip("/")
+                    for line in gi_text.splitlines()
+                    if line.strip() and not line.strip().startswith("#")
+                }
+                missing_rules = [
+                    r for r in REQUIRED_GITIGNORE_RULES
+                    if r.rstrip("/") not in existing_lines
+                ]
+                if missing_rules:
+                    result.add_warning(
+                        f"Template '{target.template}': .gitignore is missing "
+                        f"{len(missing_rules)} canonical rule(s): {', '.join(missing_rules)} "
+                        f"(will be added at generation time)"
+                    )
+                else:
+                    result.add_info(f"Template '{target.template}': .gitignore contains all canonical rules")
+            else:
+                result.add_warning(
+                    f"Template '{target.template}': .gitignore is missing "
+                    f"(will be created at generation time)"
+                )
+
             # Check gradlew / gradlew.bat
             gradlew = t_dir / "gradlew"
             gradlew_bat = t_dir / "gradlew.bat"

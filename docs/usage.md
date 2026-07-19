@@ -217,3 +217,57 @@ In the **Templates** tab, you can easily integrate new templates without navigat
 * **If `modsmith-template.json` is missing**, the GUI asks: *"Create it now?"* — answering Yes opens the descriptor form with fields pre-filled from the folder name.
 * You can also create or edit descriptors at any time by selecting a template row and clicking **Create Descriptor** or **Edit Descriptor**.
 * Click **Open Descriptor JSON** to open `modsmith-template.json` in your system default editor.
+
+---
+
+## Repository Hygiene
+
+ModSmith automatically manages `.gitignore` files on every generated branch so that Gradle build output, IDE state, and OS noise can never be accidentally committed.
+
+### Canonical Rules
+
+The following rules are guaranteed to be present on every branch of every generated repository:
+
+```gitignore
+# IDE
+.idea/
+.vscode/
+*.iml
+out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Gradle and development output
+.gradle/
+build/
+run/
+logs/
+*.class
+*.log
+hs_err_pid*
+replay_pid*
+```
+
+### How Normalization Works
+
+| Branch type | Gitignore source |
+| :---------- | :--------------- |
+| **Target branches** (fabric, forge) | Template `.gitignore` is copied, then canonical rules are merged in while preserving all existing template rules and comments. |
+| **Landing branch** | A fully canonical `.gitignore` is written by ModSmith (deterministic, identical on every regeneration). |
+
+### Gradle Wrapper JAR
+
+`gradle/wrapper/gradle-wrapper.jar` is intentionally tracked in every target branch. ModSmith does **not** add a blanket `*.jar` rule that would silently ignore it. If a custom or legacy template contains `*.jar`, the negation rule `!gradle/wrapper/gradle-wrapper.jar` is appended automatically.
+
+### Artifact Safety Scanning
+
+Before and after each commit, ModSmith runs three safety checks:
+
+1. **Template scan** — before copying, the source template is inspected for forbidden build artifacts (`.class`, `.log`, `build/`, `.gradle/`, `run/`, `logs/`). Generation fails with a clear error if any are found.
+2. **Staged scan** — after `git add -A` and before `git commit`, staged paths are inspected via `git diff --cached`. Build artifacts in the index cause a hard failure.
+3. **Committed scan** — after `git commit`, the branch tree is verified via `git ls-tree -r HEAD`. Any committed build artifact causes a hard failure.
+
+These checks ensure that locally-present-but-ignored Gradle build directories (from previous Gradle runs in the same working tree) can never contaminate commits.
+
