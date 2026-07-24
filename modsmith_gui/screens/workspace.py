@@ -8,7 +8,16 @@ import os
 import shutil
 import subprocess
 import sys
+from enum import Enum, auto
 from pathlib import Path
+
+
+class WorkspaceExitDecision(Enum):
+    """Decision returned by confirm_workspace_exit()."""
+    SAVE = auto()
+    DISCARD = auto()
+    CANCEL = auto()
+
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -22,7 +31,9 @@ from PySide6.QtGui import QPixmap
 logger = logging.getLogger(__name__)
 
 from modsmith.config import load_mod_config, ConfigError
+from modsmith_gui.widgets import NoWheelComboBox
 from modsmith_gui.widgets.log_panel import LogPanel
+
 from modsmith_gui.workspace_utils import (
     derive_pascal_case,
     derive_mc_range,
@@ -257,11 +268,114 @@ class WorkspaceScreen(QWidget):
         # Internal icon state (relative path like "ASSETS/icon.png")
         self._icon_value: str = ""
 
+        # Saved state snapshot for dirty tracking
+        self._saved_workspace_snapshot: dict | None = None
+
         # First refresh load
         self.refresh()
 
+    def _capture_workspace_state(self) -> dict:
+        """Build dictionary representation of current workspace form fields."""
+        targets = []
+        for r in range(self._table.rowCount()):
+            loader_combo = self._table.cellWidget(r, 0)
+            tpl_combo = self._table.cellWidget(r, 1)
+            compat_combo = self._table.cellWidget(r, 4)
+
+            loader = loader_combo.currentText() if isinstance(loader_combo, (NoWheelComboBox, QComboBox)) else ""
+            template = tpl_combo.currentText() if isinstance(tpl_combo, (NoWheelComboBox, QComboBox)) else ""
+            compat_type = compat_combo.currentText() if isinstance(compat_combo, (NoWheelComboBox, QComboBox)) else "Exact patch version only"
+
+            branch = self._table.item(r, 2).text().strip() if self._table.item(r, 2) else ""
+            mc_ver = self._table.item(r, 3).text().strip() if self._table.item(r, 3) else ""
+            from_ver = self._table.item(r, 5).text().strip() if self._table.item(r, 5) else ""
+            through_ver = self._table.item(r, 6).text().strip() if self._table.item(r, 6) else ""
+
+            targets.append({
+                "loader": loader,
+                "template": template,
+                "branch": branch,
+                "mc_ver": mc_ver,
+                "compat_type": compat_type,
+                "from_ver": from_ver,
+                "through_ver": through_ver,
+            })
+
+        return {
+            "mod_id": self._txt_mod_id.text().strip(),
+            "mod_name": self._txt_mod_name.text().strip(),
+            "mod_version": self._txt_mod_version.text().strip(),
+            "group": self._txt_group.text().strip(),
+            "authors": self._txt_authors.text().strip(),
+            "license": self._txt_license.text().strip(),
+            "description": self._txt_description.toPlainText().strip(),
+            "homepage": self._txt_homepage.text().strip(),
+            "issue_tracker": self._txt_issue_tracker.text().strip(),
+            "icon": self._icon_value,
+            "landing_branch_enabled": self._chk_landing_branch.isChecked(),
+            "landing_branch_name": self._txt_landing_branch_name.text().strip(),
+            "targets": targets,
+        }
+
+    def is_dirty(self) -> bool:
+        """Return True if form values differ from last loaded or saved state."""
+        if self._saved_workspace_snapshot is None:
+            return False
+        return self._capture_workspace_state() != self._saved_workspace_snapshot
+
+    def _update_saved_snapshot(self) -> None:
+        """Update saved snapshot to match current form state."""
+        self._saved_workspace_snapshot = self._capture_workspace_state()
+
+    def discard_changes(self) -> None:
+        """Revert form fields to last saved state on disk or blank defaults."""
+        details_dir = _get_default_dir("WORKSPACE") / "DETAILS"
+        json_path = details_dir / "modsmith.json"
+        if json_path.exists():
+            try:
+                self._load_from_json(json_path)
+                return
+            except Exception:
+                pass
+        self._load_blank_defaults()
+
+    def confirm_workspace_exit(self) -> WorkspaceExitDecision:
+        """Prompt user if there are unsaved workspace edits.
+
+        Returns:
+            WorkspaceExitDecision (SAVE, DISCARD, or CANCEL).
+        """
+        if not self.is_dirty():
+            return WorkspaceExitDecision.DISCARD
+
+        reply = QMessageBox.question(
+            self,
+            "Unsaved Workspace Changes",
+            "Do you want to save your changes?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+
+        if reply == QMessageBox.StandardButton.Save:
+            if self._save_config_quiet():
+                return WorkspaceExitDecision.SAVE
+            else:
+                return WorkspaceExitDecision.CANCEL
+        elif reply == QMessageBox.StandardButton.Discard:
+            self.discard_changes()
+            return WorkspaceExitDecision.DISCARD
+        else:
+            return WorkspaceExitDecision.CANCEL
+
     def refresh(self, force_prompt: bool = False) -> None:
         """Scan folders and load modsmith.json configuration from disk."""
+        if self.is_dirty():
+            decision = self.confirm_workspace_exit()
+            if decision == WorkspaceExitDecision.CANCEL:
+                return
+
         current_home = os.environ.get("MODSMITH_HOME", "")
         if current_home != self._last_home_path_for_prompt:
             self._last_home_path_for_prompt = current_home
@@ -316,6 +430,11 @@ class WorkspaceScreen(QWidget):
     @Slot()
     def _clear_all(self) -> None:
         """Clear all workspace form fields and reset one default target row after confirmation."""
+        if self.is_dirty():
+            decision = self.confirm_workspace_exit()
+            if decision in (WorkspaceExitDecision.CANCEL, WorkspaceExitDecision.SAVE):
+                return
+
         reply = QMessageBox.question(
             self,
             "Clear Form",
@@ -326,6 +445,7 @@ class WorkspaceScreen(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             self._load_blank_defaults()
             self._log_panel.append_line("[INFO] Workspace form cleared. No files were modified.")
+
 
     def _load_blank_defaults(self) -> None:
         """Populate GUI fields with clean, empty/default parameters."""
@@ -347,6 +467,7 @@ class WorkspaceScreen(QWidget):
 
         self._rebuild_targets_table([])
         self._add_target_row()  # Add one clean row
+        self._update_saved_snapshot()
 
     def _load_from_json(self, path: Path) -> None:
         """Parse configuration file and populate GUI forms and target grid rows."""
@@ -377,6 +498,8 @@ class WorkspaceScreen(QWidget):
 
         raw_targets = data.get("targets", [])
         self._rebuild_targets_table(raw_targets)
+        self._update_saved_snapshot()
+
 
     def _rebuild_targets_table(self, targets_list: list[dict]) -> None:
         """Instantiate targets in the table widget, populating template dropdowns defensively."""
@@ -408,7 +531,7 @@ class WorkspaceScreen(QWidget):
         self._table.blockSignals(True)
 
         # 1. Loader combo
-        loader_combo = QComboBox()
+        loader_combo = NoWheelComboBox()
         loader_combo.addItems(["fabric", "forge", "neoforge"])
         loader_val = target.get("loader", "fabric")
         if loader_val in ["fabric", "forge", "neoforge"]:
@@ -416,7 +539,7 @@ class WorkspaceScreen(QWidget):
         self._table.setCellWidget(row_idx, 0, loader_combo)
 
         # 2. Template combo
-        template_combo = QComboBox()
+        template_combo = NoWheelComboBox()
         t_val = target.get("template", "")
         items = list(available_templates)
         if t_val and t_val not in items:
@@ -434,7 +557,8 @@ class WorkspaceScreen(QWidget):
         self._table.setItem(row_idx, 3, QTableWidgetItem(mc_ver))
 
         # 5. Compatibility combo
-        compat_combo = QComboBox()
+        compat_combo = NoWheelComboBox()
+
         compat_combo.addItems([
             "Exact patch version only",
             "Same minor version",
@@ -769,8 +893,10 @@ class WorkspaceScreen(QWidget):
             json_text = json.dumps(config_data, indent=2) + "\n"
             json_path.write_text(json_text, encoding="utf-8")
             self._log_panel.append_line(f"Saved modsmith.json successfully to {json_path.name}")
+            self._update_saved_snapshot()
             return True
         except Exception as exc:
+
             self._log_panel.append_line(f"Failed to write modsmith.json: {exc}")
             QMessageBox.critical(self, "Save Config", f"Failed to save configuration:\n{exc}")
             return False
@@ -894,18 +1020,22 @@ class WorkspaceScreen(QWidget):
                 "icons are injected into generated mod projects.",
             )
 
-        # Copy to ASSETS (auto-suffix if exists)
+        # Copy or reuse in ASSETS
         try:
-            from modsmith_gui.assets_utils import safe_copy_to_assets
-            dest = safe_copy_to_assets(src, assets_dir)
+            from modsmith_gui.assets_utils import import_asset
+            res = import_asset(src, assets_dir)
         except Exception as exc:
-            QMessageBox.critical(self, "Select Icon", f"Failed to copy icon:\n{exc}")
+            QMessageBox.critical(self, "Select Icon", f"Failed to import icon:\n{exc}")
             return
 
         # Store relative path with forward slashes
-        relative = f"ASSETS/{dest.name}"
+        relative = res.relative_path.as_posix()
         self._set_icon_state(relative)
-        self._log_panel.append_line(f"Mod icon set: {relative}")
+        if res.reused_existing:
+            self._log_panel.append_line(f"Mod icon set (reused existing file): {relative}")
+        else:
+            self._log_panel.append_line(f"Mod icon set: {relative}")
+
 
     @Slot()
     def _clear_icon(self) -> None:

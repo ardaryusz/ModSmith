@@ -4,7 +4,8 @@ This guide covers how to install ModSmith using the Windows installer or set it 
 
 ## Installing via Windows Installer (Recommended)
 
-The easiest way to get started with ModSmith on Windows is by downloading and running the pre-built installer: `modsmith_<version>_<arch>-setup.exe` (e.g., `modsmith_2.1.3_x64-setup.exe`).
+The easiest way to get started with ModSmith on Windows is by downloading and running the pre-built installer: `modsmith_<version>_<arch>-setup.exe` (e.g., `modsmith_2.1.4_x64-setup.exe`).
+
 
 The installer bundles both the **ModSmith GUI** (`modsmith.exe`) and the **CLI** (`modsmith_cli.exe`) into a single distribution. After installation, the **ModSmith** Start Menu shortcut launches the GUI, and the CLI is available from any terminal.
 

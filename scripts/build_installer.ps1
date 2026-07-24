@@ -85,17 +85,36 @@ try {
     Write-Host "  GUI: $guiExePath" -ForegroundColor Green
     Write-Host "  CLI: $cliExePath" -ForegroundColor Green
 
-    # --- Step 2: Ensure output directory exists and clean stale setup exe ---
+    # --- Step 2: Ensure output directory exists and clean stale setup exes ---
     $installerOutDir = Join-Path $ProjectRoot "dist\installer"
     if (-not (Test-Path $installerOutDir)) {
         New-Item -ItemType Directory -Path $installerOutDir -Force | Out-Null
     } else {
+        # Only remove ModSmithSetup.exe and the versioned installer being replaced
         $genericInstallerPath = Join-Path $installerOutDir "ModSmithSetup.exe"
         if (Test-Path $genericInstallerPath) {
             Write-Host "Removing stale generic installer: $genericInstallerPath"
-            Remove-Item -Force $genericInstallerPath
+            try {
+                Remove-Item -Force $genericInstallerPath -ErrorAction Stop
+            } catch {
+                Start-Sleep -Milliseconds 500
+                Remove-Item -Force $genericInstallerPath -ErrorAction SilentlyContinue
+            }
+        }
+        $finalInstallerName = "modsmith_${Version}_${Arch}-setup.exe"
+        $finalInstallerPath = Join-Path $installerOutDir $finalInstallerName
+        if (Test-Path $finalInstallerPath) {
+            Write-Host "Removing stale versioned installer being replaced: $finalInstallerPath"
+            try {
+                Remove-Item -Force $finalInstallerPath -ErrorAction Stop
+            } catch {
+                Start-Sleep -Milliseconds 500
+                Remove-Item -Force $finalInstallerPath -ErrorAction SilentlyContinue
+            }
         }
     }
+
+
 
 
     # --- Ensure branding icon exists before NSIS compilation ---
@@ -119,6 +138,8 @@ try {
     # --- Step 3: Run NSIS ---
     Write-Host ""
     Write-Host "[2/3] Compiling NSIS installer..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 2
+
     $nsiFile = Join-Path $ProjectRoot "installer\ModSmithInstaller.nsi"
     if (-not (Test-Path $nsiFile)) {
         Write-Error "NSIS script not found at: $nsiFile"

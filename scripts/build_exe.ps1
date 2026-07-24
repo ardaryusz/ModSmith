@@ -39,21 +39,17 @@ if (-not (Test-Path "$ProjectRoot\modsmith.spec")) {
 function Stop-ModSmithProcesses {
     param([string]$DistRoot)
 
-    $names = @("modsmith", "modsmith_cli")
+    $names = @("modsmith", "modsmith_cli", "makensis", "ModSmithSetup")
     foreach ($name in $names) {
         $procs = Get-Process -Name $name -ErrorAction SilentlyContinue
         foreach ($proc in $procs) {
-            $procPath = ""
-            try { $procPath = $proc.Path } catch { }
-            if ($procPath -and $procPath.StartsWith($DistRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-                Write-Host "  Stopping locked process: $name (PID $($proc.Id)) at $procPath" -ForegroundColor Yellow
-                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            }
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
         }
     }
     # Give the OS a moment to release file handles
     Start-Sleep -Milliseconds 500
 }
+
 
 # ---------------------------------------------------------------------------
 # Helper: remove a directory with up to $MaxTries retries on lock errors.
@@ -102,13 +98,27 @@ try {
     # --- Clean previous artifacts (with retry) ---
     Write-Host ""
     Write-Host "[1/5] Cleaning previous build artifacts..." -ForegroundColor Yellow
-    foreach ($dir in @("build", "dist")) {
-        $path = Join-Path $ProjectRoot $dir
-        if (Test-Path $path) {
-            Write-Host "  Removing $path"
-            Remove-WithRetry -Path $path
-        }
+    
+    # Clean build directory
+    $buildDir = Join-Path $ProjectRoot "build"
+    if (Test-Path $buildDir) {
+        Write-Host "  Removing $buildDir"
+        Remove-WithRetry -Path $buildDir
     }
+
+    # Clean dist/ModSmith directory ONLY (never delete dist root or dist/installer)
+    $distModSmithDir = Join-Path $ProjectRoot "dist\ModSmith"
+    if (Test-Path $distModSmithDir) {
+        Write-Host "  Removing $distModSmithDir"
+        Remove-WithRetry -Path $distModSmithDir
+    }
+
+    # Ensure dist root directory exists without deleting existing dist subdirectories
+    $distDir = Join-Path $ProjectRoot "dist"
+    if (-not (Test-Path $distDir)) {
+        New-Item -ItemType Directory -Path $distDir -Force | Out-Null
+    }
+
 
     # --- Check or generate branding icon ---
     $icoPath = Join-Path $ProjectRoot "assets\modsmith.ico"
@@ -173,8 +183,8 @@ try {
     }
 
     # GUI smoke test - windowed exe (console=False); must not stay resident.
-    # Run via Start-Process with a 10-second timeout; kill if it hangs.
-    Write-Host "  GUI: modsmith.exe --version (timeout 10s)"
+    # Run via Start-Process with a 3-second timeout; kill if it hangs.
+    Write-Host "  GUI: modsmith.exe --version (timeout 3s)"
     $guiStartArgs = @{
         FilePath     = $guiExePath
         ArgumentList = "--version"
@@ -183,11 +193,11 @@ try {
         ErrorAction  = "Stop"
     }
     $guiJob = Start-Process @guiStartArgs
-    $exited = $guiJob.WaitForExit(10000)
+    $exited = $guiJob.WaitForExit(3000)
     if (-not $exited) {
-        Write-Host "  GUI process did not exit within 10 seconds - killing it." -ForegroundColor Yellow
+        Write-Host "  GUI process did not exit within 3 seconds - killing it." -ForegroundColor Yellow
         Stop-Process -Id $guiJob.Id -Force -ErrorAction SilentlyContinue
-        Write-Error "GUI smoke test timed out (modsmith.exe --version did not exit within 10s)"
+        Write-Error "GUI smoke test timed out (modsmith.exe --version did not exit within 3s)"
         exit 1
     }
     if ($guiJob.ExitCode -ne 0) {

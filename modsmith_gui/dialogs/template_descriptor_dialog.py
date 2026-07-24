@@ -28,6 +28,9 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
+from modsmith_gui.widgets import NoWheelComboBox
+
+
 from modsmith_gui.template_descriptor_utils import (
     infer_template_descriptor_defaults,
     KNOWN_LOADERS,
@@ -103,7 +106,7 @@ class TemplateDescriptorDialog(QDialog):
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
         # Loader
-        self._cmb_loader = QComboBox()
+        self._cmb_loader = NoWheelComboBox()
         self._cmb_loader.addItems(list(KNOWN_LOADERS))
         self._cmb_loader.setEditable(False)
         self._cmb_loader.currentTextChanged.connect(self._on_loader_changed)
@@ -116,13 +119,13 @@ class TemplateDescriptorDialog(QDialog):
         form.addRow("Minecraft Version:", self._txt_mc_version)
 
         # Recipe Format
-        self._cmb_recipe_format = QComboBox()
+        self._cmb_recipe_format = NoWheelComboBox()
         self._cmb_recipe_format.addItems(list(RECIPE_FORMAT_DISPLAY_TO_STORED.keys()))
         self._cmb_recipe_format.setEditable(False)
         form.addRow("Recipe Format:", self._cmb_recipe_format)
 
         # Recipe Folder
-        self._cmb_recipe_folder = QComboBox()
+        self._cmb_recipe_folder = NoWheelComboBox()
         self._cmb_recipe_folder.addItems(["recipes", "recipe"])
         self._cmb_recipe_folder.setEditable(False)
         form.addRow("Recipe Folder:", self._cmb_recipe_folder)

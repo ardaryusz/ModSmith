@@ -29,8 +29,9 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QStackedWidget,
     QSizePolicy, QLabel, QSplitter,
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt, QSignalBlocker
+from PySide6.QtGui import QIcon, QCloseEvent
+
 
 from modsmith_gui.resources import resolve_icon_path
 from modsmith_gui.widgets.log_panel import LogPanel
@@ -38,8 +39,9 @@ from modsmith_gui.screens.dashboard import DashboardScreen
 from modsmith_gui.screens.home import HomeScreen
 from modsmith_gui.screens.templates import TemplatesScreen
 from modsmith_gui.screens.recipes import RecipesScreen
-from modsmith_gui.screens.workspace import WorkspaceScreen
+from modsmith_gui.screens.workspace import WorkspaceScreen, WorkspaceExitDecision
 from modsmith_gui.screens.generate_build import GenerateBuildScreen
+
 
 
 # Navigation entries: (display label, screen widget class)
@@ -145,6 +147,7 @@ class MainWindow(QMainWindow):
         home_screen: HomeScreen = self._screen_objects["Home"]  # type: ignore[assignment]
         home_screen.home_changed.connect(self._on_home_changed)
 
+        self._current_index = 0
         self._nav.currentRowChanged.connect(self._on_nav_changed)
         self._nav.setCurrentRow(0)
 
@@ -183,18 +186,47 @@ class MainWindow(QMainWindow):
         outer.addWidget(self._splitter)
 
     # ------------------------------------------------------------------
-    # Slots
+    # Event Handlers & Slots
     # ------------------------------------------------------------------
 
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Prompt to save unsaved workspace edits before closing window."""
+        workspace_screen = self._screen_objects.get("Workspace")
+        if isinstance(workspace_screen, WorkspaceScreen) and workspace_screen.is_dirty():
+            decision = workspace_screen.confirm_workspace_exit()
+            if decision == WorkspaceExitDecision.CANCEL:
+                event.ignore()
+                return
+        event.accept()
+
     def _on_home_changed(self) -> None:
-        """Propagate a home directory change to all screens that have refresh()."""
+        """Propagate a home directory change to all screens after checking unsaved workspace changes."""
+        workspace_screen = self._screen_objects.get("Workspace")
+        if isinstance(workspace_screen, WorkspaceScreen) and workspace_screen.is_dirty():
+            decision = workspace_screen.confirm_workspace_exit()
+            if decision == WorkspaceExitDecision.CANCEL:
+                return
+
         for screen in self._screens:
             if hasattr(screen, "refresh"):
                 screen.refresh()  # type: ignore[union-attr]
 
     def _on_nav_changed(self, index: int) -> None:
-        """Handle screen changes and call refresh() on the selected screen if available."""
+        """Handle screen changes after confirming unsaved edits if needed."""
+        if index == self._current_index:
+            return
+
+        current_screen = self._screens[self._current_index]
+        if isinstance(current_screen, WorkspaceScreen) and current_screen.is_dirty():
+            decision = current_screen.confirm_workspace_exit()
+            if decision == WorkspaceExitDecision.CANCEL:
+                with QSignalBlocker(self._nav):
+                    self._nav.setCurrentRow(self._current_index)
+                return
+
+        self._current_index = index
         self._stack.setCurrentIndex(index)
         screen = self._screens[index]
         if hasattr(screen, "refresh"):
             screen.refresh()
+
